@@ -145,6 +145,7 @@ class ProjectPanel;
 class DocumentMap;
 class FunctionListPanel;
 class FileBrowser;
+class TerminalPanel;
 class MatchedFileNameProgress;
 struct QuoteParams;
 
@@ -418,6 +419,7 @@ private:
 	ProjectPanel* _pProjectPanel_3 = nullptr;
 
 	FileBrowser* _pFileBrowser = nullptr;
+	TerminalPanel* _pTerminalPanel = nullptr;
 
 	DocumentMap* _pDocMap = nullptr;
 	FunctionListPanel* _pFuncList = nullptr;
@@ -634,6 +636,7 @@ private:
 	void launchDocMap();
 	void launchFunctionList();
 	void launchFileBrowser(const std::vector<std::wstring> & folders, const std::wstring& selectedItemPath, bool fromScratch = false, std::vector<FileBrowserRootsInfo>* pFileBrowserRoots = nullptr);
+	void launchTerminal(const std::wstring& shellCmd, const std::wstring& workingDir);
 	void showAllQuotes() const;
 	static DWORD WINAPI threadTextPlayer(void *text2display);
 	static DWORD WINAPI threadTextTroller(void *params);

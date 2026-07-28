@@ -14,6 +14,7 @@ Translation note:
 					<Item menuId="edit" name="&amp;Edit"/>
 					<Item menuId="search" name="&amp;Search"/>
 					<Item menuId="view" name="&amp;View"/>
+					<Item menuId="terminal" name="&amp;Terminal"/>
 					<Item menuId="encoding" name="E&amp;ncoding"/>
 					<Item menuId="language" name="&amp;Language"/>
 					<Item menuId="settings" name="Se&amp;ttings"/>
@@ -91,6 +92,10 @@ Translation note:
 					<Item id="41019" name="Explorer"/>
 					<Item id="41020" name="cmd"/>
 					<Item id="41027" name="PowerShell"/>
+					<Item id="44201" name="cmd"/>
+					<Item id="44202" name="PowerShell"/>
+					<Item id="44203" name="Git Bash"/>
+					<Item id="44204" name="Windows Terminal"/>
 					<Item id="41025" name="Folder as Wor&amp;kspace"/>
 					<Item id="41003" name="&amp;Close"/>
 					<Item id="41004" name="Clos&amp;e All"/>
@@ -444,6 +449,10 @@ Translation note:
 				<Item CMDID="41019" name="Open Containing Folder in Explorer"/>
 				<Item CMDID="41020" name="Open Containing Folder in cmd"/>
 				<Item CMDID="41027" name="Open Containing Folder in PowerShell"/>
+				<Item CMDID="44201" name="Open Terminal (cmd)"/>
+				<Item CMDID="44202" name="Open Terminal (PowerShell)"/>
+				<Item CMDID="44203" name="Open Terminal (Git Bash)"/>
+				<Item CMDID="44204" name="Open Terminal (Windows Terminal)"/>
 				<Item CMDID="41025" name="Open Containing Folder as Workspace"/>
 				<Item CMDID="41023" name="Open in Default Viewer"/>
 				<Item CMDID="41017" name="Rename..."/>

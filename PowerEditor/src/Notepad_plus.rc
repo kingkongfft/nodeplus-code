@@ -869,6 +869,12 @@ BEGIN
         MENUITEM "Monito&ring (tail -f)",  	IDM_VIEW_MONITORING
     END
 
+    POPUP "&Terminal"
+    BEGIN
+        MENUITEM "&PowerShell",                  IDM_VIEW_OPEN_TERMINAL_PS
+        MENUITEM "&Windows Terminal",            IDM_VIEW_OPEN_TERMINAL_WT
+    END
+
     POPUP "E&ncoding"
     BEGIN
         MENUITEM "ANSI",                    IDM_FORMAT_ANSI

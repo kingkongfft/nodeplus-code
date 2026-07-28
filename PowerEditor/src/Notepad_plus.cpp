@@ -40,6 +40,7 @@
 #include "documentMap.h"
 #include "functionListPanel.h"
 #include "fileBrowser.h"
+#include "TerminalPanel.h"
 #include "Common.h"
 #include "NppDarkMode.h"
 #include "dpiManagerV2.h"
@@ -7687,6 +7688,47 @@ void Notepad_plus::launchFileBrowser(const vector<wstring> & folders, const wstr
 	checkMenuItem(IDM_VIEW_FILEBROWSER, true);
 	_toolBar.setCheck(IDM_VIEW_FILEBROWSER, true);
 	_pFileBrowser->setClosed(false);
+}
+
+void Notepad_plus::launchTerminal(const std::wstring& shellCmd, const std::wstring& workingDir)
+{
+	if (!_pTerminalPanel || _pTerminalPanel->isClosed())
+	{
+		if (_pTerminalPanel)
+		{
+			delete _pTerminalPanel;
+			_pTerminalPanel = nullptr;
+		}
+
+		_pTerminalPanel = new TerminalPanel;
+		_pTerminalPanel->init(_pPublicInterface->getHinst(), _pPublicInterface->getHSelf());
+
+		DockedWidgetData data{};
+		_pTerminalPanel->create(&data);
+
+		NppParameters& nppParams = NppParameters::getInstance();
+
+		::SendMessage(_pPublicInterface->getHSelf(), NPPM_MODELESSDIALOG, MODELESSDIALOGREMOVE, reinterpret_cast<LPARAM>(_pTerminalPanel->getHSelf()));
+
+		data.uMask = DWS_DF_CONT_BOTTOM | DWS_ICONTAB | DWS_USEOWNDARKMODE;
+		data.pszModuleName = NPP_INTERNAL_FUNCTION_STR;
+		data.dlgID = IDM_VIEW_OPEN_TERMINAL;
+
+		NativeLangSpeaker* pNativeSpeaker = nppParams.getNativeLangSpeaker();
+		std::wstring title_temp = pNativeSpeaker->getAttrNameStr(TERM_PANELTITLE, TERM_NODE_NAME, "PanelTitle");
+
+		const int titleLen = 64;
+		static wchar_t title[titleLen];
+		if (title_temp.length() < titleLen)
+		{
+			wcscpy_s(title, title_temp.c_str());
+			data.pszName = title;
+		}
+		::SendMessage(_pPublicInterface->getHSelf(), NPPM_DMMREGASDCKDLG, 0, reinterpret_cast<LPARAM>(&data));
+		_pTerminalPanel->display();
+	}
+
+	_pTerminalPanel->launchShell(shellCmd, workingDir);
 }
 
 void Notepad_plus::checkProjectMenuItem()

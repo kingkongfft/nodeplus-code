@@ -711,6 +711,8 @@ struct LargeFileRestriction final
 	bool _suppress2GBWarning = false;
 };
 
+enum TerminalType : int { term_cmd = 0, term_powershell = 1, term_gitbash = 2, term_wt = 3 };
+
 struct NppGUI final
 {
 	TbIconInfo _tbIconInfo{ toolBarStatusType::TB_STANDARD, FluentColor::defaultColor, 0, false };
@@ -792,6 +794,7 @@ struct NppGUI final
 	bool _muteSounds = false;
 	bool _enableFoldCmdToggable = false;
 	bool _hideMenuRightShortcuts = false;
+	TerminalType _defaultTerminal = term_cmd;
 	writeTechnologyEngine _writeTechnologyEngine = directWriteTechnology;
 	bool _isWordCharDefault = true;
 	std::string _customWordChars;

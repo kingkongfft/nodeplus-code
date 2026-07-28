@@ -403,6 +403,13 @@
     #define    IDM_VIEW_NPC                       (IDM_VIEW + 130)
     #define    IDM_VIEW_NPC_CCUNIEOL              (IDM_VIEW + 131)
 
+    // Terminal
+    #define    IDM_VIEW_OPEN_TERMINAL              (IDM_VIEW + 200)
+    #define    IDM_VIEW_OPEN_TERMINAL_CMD          (IDM_VIEW + 201)
+    #define    IDM_VIEW_OPEN_TERMINAL_PS           (IDM_VIEW + 202)
+    #define    IDM_VIEW_OPEN_TERMINAL_GITBASH      (IDM_VIEW + 203)
+    #define    IDM_VIEW_OPEN_TERMINAL_WT           (IDM_VIEW + 204)
+
     #define    IDM_VIEW_GOTO_ANOTHER_VIEW        10001
     #define    IDM_VIEW_CLONE_TO_ANOTHER_VIEW    10002
     #define    IDM_VIEW_GOTO_NEW_INSTANCE        10003

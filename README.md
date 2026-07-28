@@ -48,3 +48,11 @@ Contributions are welcome. Be mindful of our [Contribution Rules](CONTRIBUTING.m
 
 [Notepad++ Contributors](https://github.com/notepad-plus-plus/notepad-plus-plus/graphs/contributors)
 
+
+Acknowledgements
+----------------
+
+This project, **nodeplus-code**, is a fork/derivative built on top of the excellent open-source [Notepad++](https://github.com/notepad-plus-plus/notepad-plus-plus) project created by Don HO and its community of contributors. All credit for the original editor, its architecture, and the vast majority of its codebase goes to the upstream Notepad++ project and its maintainers.
+
+A big thank you to the Notepad++ team and community for building and maintaining such a fantastic, free, open-source text editor for Windows. Please consider starring and contributing to the [official Notepad++ repository](https://github.com/notepad-plus-plus/notepad-plus-plus) as well.
+

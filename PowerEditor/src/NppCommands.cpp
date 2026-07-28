@@ -154,6 +154,47 @@ void Notepad_plus::macroPlayback(Macro macro, std::vector<Document>* pDocs4EndUA
 }
 
 
+namespace
+{
+
+// Get the best working directory for terminal: workspace root > current file dir > user home
+std::wstring getTerminalWorkingDir(HWND nppHandle)
+{
+	// 1. Try workspace root
+	NppParameters& nppParam = NppParameters::getInstance();
+	const wchar_t* wsPath = nppParam.getWorkSpaceFilePath(0);
+	if (wsPath && wsPath[0] != L'\0')
+	{
+		// Workspace file path - use its parent directory
+		wchar_t wsDir[MAX_PATH]{};
+		wcscpy_s(wsDir, wsPath);
+		::PathRemoveFileSpec(wsDir);
+		if (::PathFileExistsW(wsDir))
+			return wsDir;
+	}
+
+	// 2. Try current file's directory
+	wchar_t filePath[MAX_PATH]{};
+	::SendMessage(nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(filePath));
+	if (filePath[0] != L'\0')
+	{
+		wchar_t fileDir[MAX_PATH]{};
+		wcscpy_s(fileDir, filePath);
+		::PathRemoveFileSpec(fileDir);
+		if (::PathFileExistsW(fileDir))
+			return fileDir;
+	}
+
+	// 3. Fallback: user profile directory
+	wchar_t userProfile[MAX_PATH]{};
+	if (::GetEnvironmentVariableW(L"USERPROFILE", userProfile, MAX_PATH) > 0)
+		return userProfile;
+
+	return L"C:\\";
+}
+
+} // namespace
+
 
 void Notepad_plus::command(int id)
 {
@@ -267,6 +308,96 @@ void Notepad_plus::command(int id)
 			}
 			Command powerShell(psPath);
 			powerShell.run(_pPublicInterface->getHSelf(), L"$(CURRENT_DIRECTORY)");
+		}
+		break;
+
+		case IDM_VIEW_OPEN_TERMINAL:
+		case IDM_VIEW_OPEN_TERMINAL_PS:
+		{
+			// Resolve PowerShell 7 (pwsh.exe) first, fall back to Windows PowerShell
+			// PowerShell 7 has native ConPTY support and better cross-platform compatibility
+			static wchar_t psPath[512] = {L'\0'};
+			static bool psInitialized = false;
+			if (!psInitialized)
+			{
+				// Try PowerShell 7 (pwsh.exe) via registry
+				HKEY hKey = nullptr;
+				LONG status = ::RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+					L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\pwsh.exe",
+					0, KEY_READ, &hKey);
+				if (status == ERROR_SUCCESS)
+				{
+					DWORD bufSize = sizeof(psPath);
+					status = ::RegGetValueW(hKey, nullptr, nullptr, RRF_RT_REG_SZ, nullptr, psPath, &bufSize);
+					::RegCloseKey(hKey);
+				}
+
+				// Fall back to Windows PowerShell (5.1) via registry
+				if (status != ERROR_SUCCESS || psPath[0] == L'\0')
+				{
+					const wchar_t* subkey = L"SOFTWARE\\Microsoft\\PowerShell\\1\\ShellIds\\Microsoft.PowerShell";
+					status = ::RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, 0, KEY_READ, &hKey);
+					if (status == ERROR_SUCCESS)
+					{
+						DWORD bufSize = sizeof(psPath);
+						status = ::RegGetValueW(hKey, nullptr, L"Path", RRF_RT_REG_SZ, nullptr, psPath, &bufSize);
+						::RegCloseKey(hKey);
+					}
+				}
+
+				// Ultimate fallback
+				if (psPath[0] == L'\0')
+					wcscpy_s(psPath, L"powershell.exe");
+
+				psInitialized = true;
+			}
+
+			// Build command line: PowerShell with -NoLogo (skip banner) and -NoExit
+		// (stay open). Working directory is set via CreateProcess lpCurrentDirectory,
+		// so no -Command cd is needed — avoids garbled startup output.
+		std::wstring workingDir = getTerminalWorkingDir(_pPublicInterface->getHSelf());
+
+		wchar_t fullCmd[4096];
+		wsprintfW(fullCmd, L"\"%s\" -NoLogo -NoExit", psPath);
+
+		launchTerminal(fullCmd, workingDir);
+		}
+		break;
+
+		case IDM_VIEW_OPEN_TERMINAL_CMD:
+		{
+			launchTerminal(L"cmd.exe", getTerminalWorkingDir(_pPublicInterface->getHSelf()));
+		}
+		break;
+
+		case IDM_VIEW_OPEN_TERMINAL_GITBASH:
+		{
+			// Resolve Git Bash path: check common install locations
+			static wchar_t gitBashPath[512] = {L'\0'};
+			if (gitBashPath[0] == L'\0')
+			{
+				const wchar_t* candidates[] = {
+					L"C:\\Program Files\\Git\\bin\\bash.exe",
+					L"C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+					L"bash.exe"
+				};
+				for (const auto& c : candidates)
+				{
+					if (::PathFileExistsW(c))
+					{
+						wcscpy_s(gitBashPath, c);
+						break;
+					}
+				}
+			}
+			if (gitBashPath[0] != L'\0')
+				launchTerminal(gitBashPath, getTerminalWorkingDir(_pPublicInterface->getHSelf()));
+		}
+		break;
+
+		case IDM_VIEW_OPEN_TERMINAL_WT:
+		{
+			launchTerminal(L"wt.exe", getTerminalWorkingDir(_pPublicInterface->getHSelf()));
 		}
 		break;
 

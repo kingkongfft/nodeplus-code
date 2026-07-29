@@ -28,6 +28,8 @@
 #include "TabBar.h"
 #include "Window.h"
 
+class TerminalPanel;
+
 
 class DocTabView : public TabBarPlus
 {
@@ -59,6 +61,10 @@ public:
 	BufferID getBufferByIndex(size_t index);
 
 	void setBuffer(size_t index, BufferID id);
+	void addTerminal(TerminalPanel* terminal, const wchar_t* title);
+	bool isTerminalTab(size_t index) const;
+	TerminalPanel* getTerminalByIndex(size_t index) const;
+	void removeTerminal(size_t index);
 
 	void reSizeTo(RECT & rc) override;
 

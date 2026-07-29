@@ -690,6 +690,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 			getMainClientRect(rc);
 			_dockingManager.reSizeTo(rc);
+			resizeTerminalTabs(rc);
 
 			if (_pDocMap)
 			{
@@ -792,6 +793,12 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case WM_COMMAND:
 		{
+			if (LOWORD(wParam) == IDM_VIEW_OPEN_TERMINAL_PS && lParam != 0)
+			{
+				const std::wstring workingDir{ reinterpret_cast<const wchar_t*>(lParam) };
+				launchTerminalTab(L"powershell.exe -NoLogo -NoExit", workingDir);
+				return TRUE;
+			}
 			if (HIWORD(wParam) == SCEN_SETFOCUS)
 			{
 				HWND hMain = _mainEditView.getHSelf(), hSec = _subEditView.getHSelf();
@@ -1118,6 +1125,8 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			{
 				for (size_t i = 0; i < _mainDocTab.nbItem() && j < nbFileNames; ++i)
 				{
+					if (_mainDocTab.isTerminalTab(i))
+						continue;
 					BufferID id = _mainDocTab.getBufferByIndex(i);
 					Buffer * buf = MainFileManager.getBufferByID(id);
 					lstrcpy(fileNames[j++], buf->getFullPathName());
@@ -1128,6 +1137,8 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			{
 				for (size_t i = 0; i < _subDocTab.nbItem() && j < nbFileNames; ++i)
 				{
+					if (_subDocTab.isTerminalTab(i))
+						continue;
 					BufferID id = _subDocTab.getBufferByIndex(i);
 					Buffer * buf = MainFileManager.getBufferByID(id);
 					lstrcpy(fileNames[j++], buf->getFullPathName());
@@ -4267,6 +4278,8 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			{
 				for (size_t i = 0, len = pTab[v]->nbItem(); i < len; ++i)
 				{
+					if (pTab[v]->isTerminalTab(i))
+						continue;
 					pBuf = MainFileManager.getBufferByID(pTab[v]->getBufferByIndex(i));
 
 					if (pBuf->getLangType() == L_SQL)

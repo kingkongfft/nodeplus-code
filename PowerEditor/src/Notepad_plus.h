@@ -420,6 +420,8 @@ private:
 
 	FileBrowser* _pFileBrowser = nullptr;
 	TerminalPanel* _pTerminalPanel = nullptr;
+	std::vector<TerminalPanel*> _terminalTabs;
+	int _activeTerminalTab = -1;
 
 	DocumentMap* _pDocMap = nullptr;
 	FunctionListPanel* _pFuncList = nullptr;
@@ -637,6 +639,10 @@ private:
 	void launchFunctionList();
 	void launchFileBrowser(const std::vector<std::wstring> & folders, const std::wstring& selectedItemPath, bool fromScratch = false, std::vector<FileBrowserRootsInfo>* pFileBrowserRoots = nullptr);
 	void launchTerminal(const std::wstring& shellCmd, const std::wstring& workingDir);
+	void launchTerminalTab(const std::wstring& shellCmd, const std::wstring& workingDir);
+	void selectTerminalTab(int index);
+	void resizeTerminalTabs(const RECT& rc);
+	void closeTerminalTab(int index);
 	void showAllQuotes() const;
 	static DWORD WINAPI threadTextPlayer(void *text2display);
 	static DWORD WINAPI threadTextTroller(void *params);

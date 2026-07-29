@@ -25,6 +25,7 @@
 #include "Common.h"
 #include <stack>
 #include "shortcut.h"
+#include "WinControls/TerminalPanel/TerminalPanel.h"
 
 using namespace std;
 
@@ -822,6 +823,20 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 		case TCN_TABDELETE:
 		{
 			int index = tabNotification->_tabOrigin;
+			if (notifyDocTab->isTerminalTab(index))
+			{
+				TerminalPanel* terminal = notifyDocTab->getTerminalByIndex(index);
+				if (terminal)
+				{
+					terminal->terminate();
+					_terminalTabs.erase(std::remove(_terminalTabs.begin(), _terminalTabs.end(), terminal), _terminalTabs.end());
+					delete terminal;
+				}
+				notifyDocTab->removeTerminal(index);
+				_activeTerminalTab = -1;
+				checkDocState();
+				break;
+			}
 			BufferID bufferToClose = notifyDocTab->getBufferByIndex(index);
 			Buffer * buf = MainFileManager.getBufferByID(bufferToClose);
 			int iView = isFromPrimary ? MAIN_VIEW : SUB_VIEW;
@@ -843,6 +858,8 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 		case TCN_TABPINNED:
 		{
 			int index = tabNotification->_tabOrigin;
+			if (notifyDocTab->isTerminalTab(index))
+				break;
 			BufferID bufferToBePinned = notifyDocTab->getBufferByIndex(index);
 			Buffer * buf = MainFileManager.getBufferByID(bufferToBePinned);
 
@@ -885,9 +902,20 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 				break;
 
 			// save map position before switch to a new document
+			if (_pDocTab->isTerminalTab(_pDocTab->getCurrentTabIndex()))
+			{
+				selectTerminalTab(_pDocTab->getCurrentTabIndex());
+				break;
+			}
+			for (TerminalPanel* terminal : _terminalTabs)
+				terminal->displayInMainArea(false);
+			_activeTerminalTab = -1;
 			_documentPeeker.saveCurrentSnapshot(*_pEditView);
 
 			switchEditViewTo(iView);
+			_pEditView->display(true);
+			_pDocTab->display(true);
+			_pMainWindow->display(true);
 			BufferID bufid = _pDocTab->getBufferByIndex(_pDocTab->getCurrentTabIndex());
 			if (bufid != BUFFER_INVALID)
 			{

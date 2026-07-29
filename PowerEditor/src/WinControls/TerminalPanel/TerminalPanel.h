@@ -71,6 +71,9 @@ public:
 	bool isRunning() const { return _running; }
 	HWND getTerminalHwnd() const { return _hTermWnd; }
 	void terminate();
+	void displayInMainArea(bool toShow) const {
+		::ShowWindow(_hSelf, toShow ? SW_SHOW : SW_HIDE);
+	}
 
 	// Keyboard input (public for hook)
 	void sendKeyToTerminal(WPARAM wParam, LPARAM lParam);

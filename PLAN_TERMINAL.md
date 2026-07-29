@@ -1,5 +1,133 @@
 # Plan: Add VS Code-style Terminal Submenu to Notepad++
 
+## Follow-up Plan: Workspace PowerShell Embedded Terminal Tab
+
+### Goal
+
+Update the Folder as Workspace context menu so that `CMD here` is removed and
+`PowerShell here` opens a new built-in ConPTY terminal in the main document tab
+area. It must not launch an external terminal or reuse the bottom docking panel.
+
+### Current Implementation
+
+- Workspace menus are created in `PowerEditor/src/WinControls/FileBrowser/fileBrowser.cpp`.
+- Both commands are inserted into root, folder, and file popup menus.
+- `PowerShell here` currently calls `Command::run()`.
+- The built-in terminal is `TerminalPanel`, owned as one `_pTerminalPanel` and registered as a bottom docking panel.
+- Normal document tabs use buffers and Scintilla views, so a terminal needs a dedicated host and lifecycle path rather than pretending to be a saved file.
+
+### Implementation Steps
+
+1. Remove `IDM_FILEBROWSER_CMDHERE` from all workspace popup menus and remove its execution branch. Keep resource IDs stable and review localized menu labels.
+2. Centralize PowerShell resolution, preferring `pwsh.exe` and falling back to Windows PowerShell. Pass the selected folder as the process working directory.
+3. Separate the reusable ConPTY, process, ANSI, keyboard, selection, clipboard, and resize logic from the docking-specific UI. Avoid duplicating terminal behavior.
+4. Add a document-area terminal tab host. Each activation creates an independent terminal instance with its own process, pseudo console, buffers, and working directory.
+5. Integrate terminal tabs with activation and close handling. Terminal tabs must not participate in save prompts, file monitoring, workspace paths, or normal document persistence.
+6. Change `PowerShell here` to call the main terminal-tab creation API instead of `Command::run()`. File selections should use their parent directory.
+7. Reuse the same terminal-tab creation path for `Terminal -> PowerShell` for consistent behavior. Keep other terminal menu entries unchanged unless the shared refactor requires it.
+
+### Lifecycle and Interaction Requirements
+
+- Switching tabs must not terminate inactive terminals.
+- Closing a terminal tab must terminate PowerShell and release ConPTY resources.
+- Application shutdown must clean up all terminal instances.
+- Preserve Ctrl+C, copy, paste, selection, scrolling, ANSI colors, and alternate-screen applications.
+- Multiple terminal tabs must remain independent.
+
+### Verification
+
+- Root, folder, and file context menus no longer show `CMD here`.
+- `PowerShell here` opens a new main-area tab, not the bottom panel or an external window.
+- The shell starts in the selected workspace directory.
+- Multiple activations create independent tabs and closing one does not affect others.
+- Ordinary file tabs, split views, and application shutdown remain stable.
+- Build with `./build-local.sh` or an incremental MinGW make and check warnings.
+
+### Risks
+
+The primary risk is integrating a non-file view into the document tab system without
+affecting buffer, save, and close logic. The safer approach is to extract a reusable
+terminal core/control first, then add a dedicated tab host and lifecycle manager.
+
+No code changes are made by this planning step.
+
+## Fixing Plan: Make Terminal a Real Document Tab
+
+### Problem
+
+The current implementation creates a standalone `TerminalPanel` window over the
+editor area. It is not part of `_mainDocTab`, so it covers the active file and
+cannot behave like a normal document tab.
+
+### Target Design
+
+Integrate terminal entries into the existing main document tab model:
+
+```text
+File tab     -> BufferID       -> ScintillaEditView
+Terminal tab -> TerminalPanel* -> embedded ConPTY view
+```
+
+The existing document tab bar remains the only visible tab bar. Selecting a file
+tab shows the Scintilla view; selecting a terminal tab hides the Scintilla view
+and shows the selected TerminalPanel in the same editor content area.
+
+### Implementation Steps
+
+1. Remove the custom `_hTerminalTabBar` and all overlay-specific positioning.
+2. Extend `DocTabView` with terminal-item support:
+   - add a terminal item;
+   - identify terminal items;
+   - retrieve the terminal associated with an item;
+   - remove terminal items safely.
+3. Replace the assumption that every tab `lParam` is a `BufferID` with an
+   explicit tab-item type and payload. Terminal pointers must never be treated
+   as buffers.
+4. Update main tab selection handling:
+   - file item: use the existing buffer activation and editor-view flow;
+   - terminal item: hide the editor views and show the selected TerminalPanel.
+5. Host TerminalPanel in the main editor content container, below the existing
+   document tab bar, and resize it using that container's client rectangle.
+6. Update close handling:
+   - close the terminal's ConPTY process;
+   - remove its tab item;
+   - destroy and release the TerminalPanel;
+   - activate a valid neighboring tab.
+7. Audit every loop and helper that assumes a tab maps to a file buffer, including
+   session persistence, file monitoring, buffer activation, modified-state checks,
+   recent-file handling, and document close operations. Terminal items must be
+   skipped by those paths.
+8. Keep `PowerShell here` as the entry point that creates a terminal tab with the
+   selected workspace directory. Keep `CMD here` removed.
+
+### Lifecycle Requirements
+
+- Each terminal tab owns an independent PowerShell process and ConPTY state.
+- Switching tabs must preserve inactive terminal processes.
+- Closing a terminal tab must terminate its process and release all resources.
+- Application shutdown must clean up every terminal tab.
+- Ordinary file tabs must retain existing save, close, monitoring, and session
+  behavior.
+- Split views must not interpret a terminal item as a `BufferID`.
+
+### Verification
+
+- A workspace `PowerShell here` action creates exactly one item in the existing
+  document tab bar.
+- The active file content is not covered or destroyed.
+- Switching between file and terminal tabs restores each view correctly.
+- Multiple terminal tabs remain independent and preserve their working folders.
+- Closing terminal tabs does not affect file tabs or other terminals.
+- `CMD here` remains absent from workspace menus.
+- Build with `./build-local.sh` and manually test root, folder, and file nodes.
+
+### Risks
+
+The main risk is the large amount of existing code that assumes every document
+tab contains a `BufferID`. The implementation must centralize terminal-item checks
+and avoid passing terminal payloads through file-management APIs. This is safer
+than continuing to position an independent window over the editor.
+
 ## Goal
 
 Add a new `View → Open Terminal` submenu with:

@@ -360,7 +360,7 @@ void Notepad_plus::command(int id)
 		wchar_t fullCmd[4096];
 		swprintf_s(fullCmd, L"\"%s\" -NoLogo -NoExit", psPath);
 
-		launchTerminal(fullCmd, workingDir);
+			launchTerminal(fullCmd, workingDir);
 		}
 		break;
 

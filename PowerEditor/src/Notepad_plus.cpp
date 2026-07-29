@@ -4787,11 +4787,14 @@ void Notepad_plus::loadBufferIntoView(BufferID id, int whichOne, bool dontClose)
 	//Check if the tab has a single clean buffer. Close it if so
 	if (!dontClose && tabToOpen->nbItem() == 1)
 	{
-		idToClose = tabToOpen->getBufferByIndex(0);
-		Buffer * buf = MainFileManager.getBufferByID(idToClose);
-		if (buf->isDirty() || !buf->isUntitled())
+		if (!tabToOpen->isTerminalTab(0))
 		{
-			idToClose = BUFFER_INVALID;
+			idToClose = tabToOpen->getBufferByIndex(0);
+			Buffer * buf = MainFileManager.getBufferByID(idToClose);
+			if (buf->isDirty() || !buf->isUntitled())
+			{
+				idToClose = BUFFER_INVALID;
+			}
 		}
 	}
 
@@ -7729,6 +7732,81 @@ void Notepad_plus::launchTerminal(const std::wstring& shellCmd, const std::wstri
 	}
 
 	_pTerminalPanel->launchShell(shellCmd, workingDir);
+}
+
+void Notepad_plus::launchTerminalTab(const std::wstring& shellCmd, const std::wstring& workingDir)
+{
+	TerminalPanel* terminal = new TerminalPanel;
+	terminal->init(_pPublicInterface->getHinst(), _pPublicInterface->getHSelf());
+	DockedWidgetData data{};
+	terminal->create(&data);
+	::SendMessage(_pPublicInterface->getHSelf(), NPPM_MODELESSDIALOG, MODELESSDIALOGREMOVE,
+		reinterpret_cast<LPARAM>(terminal->getHSelf()));
+	::SetParent(terminal->getHSelf(), _mainDocTab.getHSelf());
+	::SetWindowLongPtr(terminal->getHSelf(), GWL_STYLE, WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
+	::SetWindowPos(terminal->getHSelf(), HWND_TOP, 0, 0, 0, 0,
+		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+	_terminalTabs.push_back(terminal);
+
+	_mainDocTab.addTerminal(terminal, L"PowerShell");
+	const int tabIndex = static_cast<int>(_mainDocTab.nbItem() - 1);
+	_mainDocTab.activateAt(tabIndex);
+	selectTerminalTab(tabIndex);
+	terminal->launchShell(shellCmd, workingDir);
+}
+
+void Notepad_plus::selectTerminalTab(int index)
+{
+	if (index < 0 || static_cast<size_t>(index) >= _mainDocTab.nbItem() || !_mainDocTab.isTerminalTab(index))
+		return;
+
+	_activeTerminalTab = index;
+	TerminalPanel* activeTerminal = _mainDocTab.getTerminalByIndex(index);
+	if (!activeTerminal)
+		return;
+	_mainEditView.display(false);
+	_subEditView.display(false);
+	for (TerminalPanel* terminal : _terminalTabs)
+		terminal->displayInMainArea(terminal == activeTerminal);
+	RECT contentRc{};
+	::GetClientRect(_mainDocTab.getHSelf(), &contentRc);
+	::SendMessage(_mainDocTab.getHSelf(), TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&contentRc));
+	for (TerminalPanel* terminal : _terminalTabs)
+		terminal->reSizeToWH(contentRc);
+	::SetFocus(activeTerminal->getTerminalHwnd());
+}
+
+void Notepad_plus::closeTerminalTab(int index)
+{
+	if (index < 0 || static_cast<size_t>(index) >= _mainDocTab.nbItem() || !_mainDocTab.isTerminalTab(index))
+		return;
+	TerminalPanel* terminal = _mainDocTab.getTerminalByIndex(index);
+	if (terminal)
+	{
+		terminal->terminate();
+		_terminalTabs.erase(std::remove(_terminalTabs.begin(), _terminalTabs.end(), terminal), _terminalTabs.end());
+		delete terminal;
+	}
+	_mainDocTab.removeTerminal(index);
+	_activeTerminalTab = -1;
+	if (_mainDocTab.nbItem() > 0)
+		_mainDocTab.activateAt(std::min(index, static_cast<int>(_mainDocTab.nbItem()) - 1));
+}
+
+void Notepad_plus::resizeTerminalTabs(const RECT& rc)
+{
+	(void)rc;
+	if (_activeTerminalTab < 0)
+		return;
+
+	RECT contentRc{};
+	::GetClientRect(_mainDocTab.getHSelf(), &contentRc);
+	::SendMessage(_mainDocTab.getHSelf(), TCM_ADJUSTRECT, FALSE, reinterpret_cast<LPARAM>(&contentRc));
+	POINT contentPoints[2] = { { contentRc.left, contentRc.top }, { contentRc.right, contentRc.bottom } };
+	::MapWindowPoints(_mainDocTab.getHSelf(), _pPublicInterface->getHSelf(), contentPoints, 2);
+	RECT terminalRc{ contentPoints[0].x, contentPoints[0].y, contentPoints[1].x, contentPoints[1].y };
+	for (TerminalPanel* terminal : _terminalTabs)
+		terminal->reSizeToWH(terminalRc);
 }
 
 void Notepad_plus::checkProjectMenuItem()

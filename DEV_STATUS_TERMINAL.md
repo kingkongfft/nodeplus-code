@@ -4,13 +4,23 @@
 **Branch**: `master` (local)  
 **Feature**: Embedded ConPTY terminal — PowerShell / cmd / Git Bash / Windows Terminal
 
+**Latest work**: Workspace `PowerShell here` terminal tabs
+
+**Current result**: Functional but not production-ready. Workspace PowerShell opens in the main document tab area and file/terminal switching works, but the terminal content has a persistent top-edge overlap with the document tab header. Further layout cleanup is deferred.
+
 ---
 
 ## Summary
 
-Embedded terminal panel using Windows ConPTY API (`CreatePseudoConsole`). Supports PowerShell 7 (`pwsh.exe`) with `-NoLogo -NoExit`, with Windows PowerShell 5.1 fallback. Command Prompt, Git Bash, and Windows Terminal are also available. The terminal is docked at the bottom and can be recreated after closing. PowerShell copy/paste, keyboard navigation, Unicode output, selection, scrollback, and ANSI rendering were substantially hardened and manually verified in-app.
+Embedded terminal using Windows ConPTY API (`CreatePseudoConsole`). Supports PowerShell 7 (`pwsh.exe`) with `-NoLogo -NoExit`, with Windows PowerShell 5.1 fallback. Command Prompt, Git Bash, and Windows Terminal are also available. The original terminal is docked at the bottom and can be recreated after closing. Workspace `PowerShell here` now creates a separate terminal host in the main document area with a dedicated terminal tab bar. PowerShell copy/paste, keyboard navigation, Unicode output, selection, scrollback, and ANSI rendering were substantially hardened and manually verified in-app.
 
 The `IDM_VIEW_OPEN_TERMINAL` / `IDM_VIEW_OPEN_TERMINAL_PS` menu items now correctly launch PowerShell. A diagnostic `cmd.exe /D /K echo CONPTY_READY` override that was left in `NppCommands.cpp` has been removed; the resolved `psPath` is used directly.
+
+The workspace context menu no longer exposes `CMD here`. `PowerShell here` passes the selected workspace directory through the main window command path and opens a new embedded terminal tab instead of launching an external process.
+
+The repository build was verified with `./build-local.sh` after the terminal-tab changes. The MinGW release executable linked successfully.
+
+The latest runtime verification confirmed that workspace terminal creation, file-tab restoration, and process startup work. The remaining visible issue is terminal content positioning: the PowerShell prompt can overlap or partially cover the lower edge of the shared document-tab header. The current implementation is intentionally left functional but unfinished in this area.
 
 ---
 
@@ -20,6 +30,9 @@ The `IDM_VIEW_OPEN_TERMINAL` / `IDM_VIEW_OPEN_TERMINAL_PS` menu items now correc
 |------|--------|
 | `PowerEditor/src/Notepad_plus.cpp` | `launchTerminal()`: creates singleton TerminalPanel, docks it, handles re-creation after close |
 | `PowerEditor/src/NppCommands.cpp` | PowerShell 7 detection (pwsh.exe) + PS5 fallback; `-NoLogo -NoExit` flags; `getTerminalWorkingDir()`; removed `cmd.exe` diagnostic override |
+| `PowerEditor/src/NppBigSwitch.cpp` | Creates workspace PowerShell terminal tabs, handles tab selection, and resizes terminal hosts |
+| `PowerEditor/src/Notepad_plus.h` | Stores terminal tab bar, terminal instances, active terminal index, and tab lifecycle methods |
+| `PowerEditor/src/WinControls/FileBrowser/fileBrowser.cpp` | Removes `CMD here`; routes `PowerShell here` to the main window terminal command |
 | `PowerEditor/src/WinControls/TerminalPanel/TerminalPanel.h` | Terminal state, synchronized ConPTY input, ANSI modes, UTF-8 decoder, selection and rendering state |
 | `PowerEditor/src/WinControls/TerminalPanel/TerminalPanel.cpp` | ConPTY lifecycle, clipboard operations, keyboard translation, reader thread, ANSI parser, selection and rendering |
 | `PowerEditor/src/WinControls/TerminalPanel/TerminalPanel.rc` | Empty dialog resource (only child is programmatic terminal window) |
@@ -40,13 +53,13 @@ Menu Bar -> Terminal (top-level POPUP, MENUINDEX_TERMINAL=4)
         +-- IDM_VIEW_OPEN_TERMINAL_GITBASH -> Git Bash (embedded ConPTY)
         +-- IDM_VIEW_OPEN_TERMINAL_WT   -> Windows Terminal (external wt.exe)
                 |
-                v
-        Notepad_plus::launchTerminal(shellPath, workingDir)
+                +-- Terminal menu -> Notepad_plus::launchTerminal(shellPath, workingDir)
+                +-- Workspace PowerShell here -> launchTerminalTab(shellPath, workspaceDir)
                 |
-                +-- Panel alive? -> launchShell()
-                +-- Panel closed? -> delete + new TerminalPanel + display() + launchShell()
+                +-- Existing terminal menu -> bottom TerminalPanel
+                +-- Workspace menu -> main-area TerminalPanel instance + terminal tab bar
                         |
-                TerminalPanel (docked at bottom, re-creatable)
+                TerminalPanel (docked panel or main-area tab host)
                         |
                 +-------+-------+
                 |       |       |
@@ -199,6 +212,16 @@ termKbHookProc(nCode, wParam, lParam):
 ---
 
 ## Known Limitations
+
+### Workspace Terminal Tabs — Current Scope
+
+- Workspace terminal tabs are embedded child windows hosted in the main document area; they are not ordinary file buffers.
+- Each activation creates an independent `TerminalPanel` and PowerShell process.
+- Tab selection and window resize handling are implemented.
+- Terminal-tab close handling is not yet integrated with the document tab close gesture; further lifecycle work is required.
+- The bottom `Terminal -> PowerShell` command remains on the existing docked-panel path.
+- Manual UI verification is still required for tab switching, closing, focus handling, and restoring ordinary document tabs.
+- Known UI defect: the embedded terminal content can overlap the bottom edge of the shared document-tab header. This is deferred for a later layout pass.
 
 ### Bug 11: Terminal PowerShell menu opens CMD instead of PowerShell 🔴->🟢
 

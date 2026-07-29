@@ -27,6 +27,46 @@
 #include "ScintillaEditView.h"
 #include "TabBar.h"
 #include "resource.h"
+#include "../WinControls/TerminalPanel/TerminalPanel.h"
+
+namespace
+{
+constexpr LPARAM terminalTabMarker = 1;
+}
+
+void DocTabView::addTerminal(TerminalPanel* terminal, const wchar_t* title)
+{
+	TCITEM item{};
+	item.mask = TCIF_TEXT | TCIF_PARAM;
+	item.pszText = const_cast<wchar_t*>(title);
+	item.lParam = reinterpret_cast<LPARAM>(terminal) | terminalTabMarker;
+	::SendMessage(_hSelf, TCM_INSERTITEM, _nbItem++, reinterpret_cast<LPARAM>(&item));
+}
+
+bool DocTabView::isTerminalTab(size_t index) const
+{
+	TCITEM item{};
+	item.mask = TCIF_PARAM;
+	if (::SendMessage(_hSelf, TCM_GETITEM, index, reinterpret_cast<LPARAM>(&item)) == FALSE)
+		return false;
+	return (item.lParam & terminalTabMarker) != 0;
+}
+
+TerminalPanel* DocTabView::getTerminalByIndex(size_t index) const
+{
+	if (!isTerminalTab(index))
+		return nullptr;
+	TCITEM item{};
+	item.mask = TCIF_PARAM;
+	::SendMessage(_hSelf, TCM_GETITEM, index, reinterpret_cast<LPARAM>(&item));
+	return reinterpret_cast<TerminalPanel*>(item.lParam & ~terminalTabMarker);
+}
+
+void DocTabView::removeTerminal(size_t index)
+{
+	if (isTerminalTab(index))
+		deletItemAt(index);
+}
 
 enum ImgIdx
 {
@@ -107,6 +147,8 @@ void DocTabView::setIndividualTabColour(BufferID bufferId, int colorId)
 
 int DocTabView::getIndividualTabColourId(int tabIndex)
 {
+	if (isTerminalTab(tabIndex))
+		return -1;
 	BufferID bufferId = getBufferByIndex(tabIndex);
 	if (!bufferId)
 		return -1;
@@ -139,6 +181,8 @@ BufferID DocTabView::findBufferByName(const wchar_t * fullfilename) //-1 if not 
 	tie.mask = TCIF_PARAM;
 	for (size_t i = 0; i < _nbItem; ++i)
 	{
+		if (isTerminalTab(i))
+			continue;
 		::SendMessage(_hSelf, TCM_GETITEM, i, reinterpret_cast<LPARAM>(&tie));
 		BufferID id = reinterpret_cast<BufferID>(tie.lParam);
 		const Buffer* buf = MainFileManager.getBufferByID(id);
@@ -168,6 +212,9 @@ int DocTabView::getIndexByBuffer(BufferID id)
 
 BufferID DocTabView::getBufferByIndex(size_t index)
 {
+	if (isTerminalTab(index))
+		return BUFFER_INVALID;
+
 	TCITEM tie{};
 	tie.lParam = -1;
 	tie.mask = TCIF_PARAM;

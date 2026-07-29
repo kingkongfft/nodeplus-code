@@ -2634,6 +2634,8 @@ void Notepad_plus::checkClipboard()
 void Notepad_plus::checkDocState()
 {
 	Buffer * curBuf = _pEditView->getCurrentBuffer();
+	if (!curBuf)
+		return;
 
 	bool isCurrentDirty = curBuf->isDirty();
 	bool isSeveralDirty = isCurrentDirty;
@@ -4757,7 +4759,11 @@ bool Notepad_plus::canHideView(int whichOne)
 	if (!bothActive())
 		return false;	//cannot hide only window
 	DocTabView * tabToCheck = (whichOne == MAIN_VIEW)?&_mainDocTab:&_subDocTab;
+	if (tabToCheck->isTerminalTab(0))
+		return false;
 	Buffer * buf = MainFileManager.getBufferByID(tabToCheck->getBufferByIndex(0));
+	if (!buf)
+		return false;
 	bool canHide = ((tabToCheck->nbItem() == 1) && !buf->isDirty() && buf->isUntitled());
 	return canHide;
 }
@@ -4767,8 +4773,12 @@ bool Notepad_plus::isEmpty()
 	if (bothActive()) return false;
 
 	DocTabView * tabToCheck = (_mainWindowStatus & WindowMainActive) ? &_mainDocTab : &_subDocTab;
+	if (tabToCheck->isTerminalTab(0))
+		return false;
 	
 	Buffer * buf = MainFileManager.getBufferByID(tabToCheck->getBufferByIndex(0));
+	if (!buf)
+		return false;
 	bool isEmpty = ((tabToCheck->nbItem() == 1) && !buf->isDirty() && buf->isUntitled());
 	return isEmpty;
 }
@@ -4861,8 +4871,8 @@ bool Notepad_plus::removeBufferFromView(BufferID id, int whichOne)
 				toActivate = active;    //activate the 'active' index. Since we remove the tab first, the indices shift (on the right side)
 			}
 
-			if (NppParameters::getInstance().getNppGUI()._styleMRU)
-			{
+		if (NppParameters::getInstance().getNppGUI()._styleMRU)
+		{
 				// After closing a file choose the file to activate based on MRU list and not just last file in the list.
 				TaskListInfo taskListInfo;
 				::SendMessage(_pPublicInterface->getHSelf(), WM_GETTASKLISTINFO, reinterpret_cast<WPARAM>(&taskListInfo), 0);
@@ -4877,10 +4887,36 @@ bool Notepad_plus::removeBufferFromView(BufferID id, int whichOne)
 				}
 			}
 
+			if (toActivate < 0 || static_cast<size_t>(toActivate) >= tabToClose->nbItem() || tabToClose->isTerminalTab(toActivate))
+			{
+				toActivate = -1;
+				for (size_t candidate = 0; candidate < tabToClose->nbItem(); ++candidate)
+				{
+					if (static_cast<int>(candidate) != index && !tabToClose->isTerminalTab(candidate))
+					{
+						toActivate = static_cast<int>(candidate);
+						break;
+					}
+				}
+			}
+
 			tabToClose->deletItemAt((size_t)index); //delete first
 			_isFolding = true; // So we can ignore events while folding is taking place
-			activateBuffer(tabToClose->getBufferByIndex(toActivate), whichOne);     //then activate. The prevent jumpy tab behaviour
-			_isFolding = false;
+			if (toActivate < 0)
+			{
+				_isFolding = false;
+			}
+			else if (tabToClose->isTerminalTab(toActivate))
+				{
+					tabToClose->activateAt(toActivate);
+					if (whichOne == MAIN_VIEW)
+						selectTerminalTab(toActivate);
+				}
+				else
+				{
+					activateBuffer(tabToClose->getBufferByIndex(toActivate), whichOne);     //then activate. The prevent jumpy tab behaviour
+				}
+				_isFolding = false;
 		}
 	}
 	else
@@ -5140,6 +5176,8 @@ bool Notepad_plus::activateBuffer(BufferID id, int whichOne, bool forceApplyHili
 	}
 
 	Buffer * pBuf = MainFileManager.getBufferByID(id);
+	if (!pBuf)
+		return false;
 	bool reload = pBuf->getNeedReload();
 	if (reload)
 	{
@@ -5897,15 +5935,23 @@ void Notepad_plus::getTaskListInfo(TaskListInfo *tli)
 
 	for (int i = 0 ; i < currentNbDoc ; ++i)
 	{
+		if (_pDocTab->isTerminalTab(i))
+			continue;
 		BufferID bufID = _pDocTab->getBufferByIndex(i);
 		Buffer * b = MainFileManager.getBufferByID(bufID);
+		if (!b)
+			continue;
 		int status = b->isMonitoringOn()?tb_monitored:(b->isReadOnly()?tb_ro:(b->isDirty()?tb_unsaved:tb_saved));
 		tli->_tlfsLst.push_back(TaskLstFnStatus(currentView(), i, b->getFullPathName(), status, (void *)bufID, b->getDocColorId()));
 	}
 	for (int i = 0 ; i < nonCurrentNbDoc ; ++i)
 	{
+		if (_pNonDocTab->isTerminalTab(i))
+			continue;
 		BufferID bufID = _pNonDocTab->getBufferByIndex(i);
 		Buffer * b = MainFileManager.getBufferByID(bufID);
+		if (!b)
+			continue;
 		int status = b->isMonitoringOn()?tb_monitored:(b->isReadOnly()?tb_ro:(b->isDirty()?tb_unsaved:tb_saved));
 		tli->_tlfsLst.push_back(TaskLstFnStatus(otherView(), i, b->getFullPathName(), status, (void *)bufID, b->getDocColorId()));
 	}
@@ -7788,9 +7834,9 @@ void Notepad_plus::closeTerminalTab(int index)
 	{
 		terminal->terminate();
 		_terminalTabs.erase(std::remove(_terminalTabs.begin(), _terminalTabs.end(), terminal), _terminalTabs.end());
-		delete terminal;
 	}
 	_mainDocTab.removeTerminal(index);
+	delete terminal;
 	_activeTerminalTab = -1;
 	if (_mainDocTab.nbItem() > 0)
 		_mainDocTab.activateAt(std::min(index, static_cast<int>(_mainDocTab.nbItem()) - 1));

@@ -1137,6 +1137,8 @@ bool Notepad_plus::fileClose(BufferID id, int curView)
 	if (id == BUFFER_INVALID)
 		bufferID = _pEditView->getCurrentBufferID();
 	Buffer * buf = MainFileManager.getBufferByID(bufferID);
+	if (!buf)
+		return false;
 
 	int viewToClose = currentView();
 	if (curView != -1)

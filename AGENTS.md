@@ -19,6 +19,8 @@ The main executable is `nodeplus-code.exe`, built from `PowerEditor/`. It embeds
 [Scintilla](https://www.scintilla.org/) (`scintilla/`) and [Lexilla](https://www.scintilla.org/Lexilla.html)
 (`lexilla/`) as static libraries.
 
+The default local portable application binary is `dist/nodeplus-code-portable/nodeplus-code.exe`.
+
 ---
 
 ## Build Commands
@@ -50,6 +52,8 @@ mingw32-make -j$(nproc) CXX=clang++ PREBUILD_EVENT_CMD=:
 Output lands in `PowerEditor/gcc/bin.gcc.x86_64/` (release) or `PowerEditor/gcc/bin.gcc.x86_64-debug/` (debug).
 The script is the preferred build entry point; it also runs the repository's pre-build steps.
 If linking reports `Permission denied`, close the running `nodeplus-code.exe` first.
+
+For local app launch or restart, use `dist/nodeplus-code-portable/nodeplus-code.exe`.
 
 ### Visual Studio 2022 (MSVC)
 ```bash

@@ -830,15 +830,17 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 				{
 					terminal->terminate();
 					_terminalTabs.erase(std::remove(_terminalTabs.begin(), _terminalTabs.end(), terminal), _terminalTabs.end());
-					delete terminal;
 				}
 				notifyDocTab->removeTerminal(index);
+				delete terminal;
 				_activeTerminalTab = -1;
 				checkDocState();
 				break;
 			}
 			BufferID bufferToClose = notifyDocTab->getBufferByIndex(index);
 			Buffer * buf = MainFileManager.getBufferByID(bufferToClose);
+			if (bufferToClose == BUFFER_INVALID || !buf)
+				break;
 			int iView = isFromPrimary ? MAIN_VIEW : SUB_VIEW;
 			if (buf->isDirty())
 			{

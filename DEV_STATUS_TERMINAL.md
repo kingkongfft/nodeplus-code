@@ -6,7 +6,7 @@
 
 **Latest work**: Workspace `PowerShell here` terminal tabs
 
-**Current result**: Functional but not production-ready. Workspace PowerShell opens in the main document tab area and file/terminal switching works, but the terminal content has a persistent top-edge overlap with the document tab header. Further layout cleanup is deferred.
+**Current result**: Functional but not production-ready. Workspace PowerShell opens in the main document tab area and file/terminal switching works. The file-tab crash that occurred while PowerShell tabs were open is fixed; terminal content still has a persistent top-edge overlap with the document tab header. Further layout cleanup is deferred.
 
 **Portable release**: `v0.1.0` was built successfully with `./build-local.sh` and published to GitHub as a MinGW-w64 x86_64 portable ZIP: <https://github.com/kingkongfft/nodeplus-code/releases/tag/v0.1.0>. The release asset is `nodeplus-code-portable.zip` and contains the executable plus the required configuration, language definitions, themes, and plugins.
 
@@ -299,6 +299,20 @@ siEx.StartupInfo.hStdError  = _ptyOutputWriteSide;
 
 Full write-up: `PowerEditor/src/WinControls/TerminalPanel/BUGFIX_CONPTY_BLANK_POWERSHELL.md`
 
+## Bug 13: Closing File Tab with PowerShell Tab Crashed the App — Fixed (2026-07-29)
+
+**Symptom**: With one or more embedded PowerShell tabs open, closing any ordinary file tab caused NodePlus-CODE to exit. Closing file tabs without terminal tabs open did not reproduce the problem.
+
+**Root cause**: Terminal tabs share the document tab bar but are not `Buffer` objects. The file-close path requested task-list/MRU data while selecting the replacement tab. `getTaskListInfo()` iterated terminal tabs, produced an invalid `BufferID`, and dereferenced a null `Buffer*`. The replacement-tab path could also send a terminal tab through ordinary `activateBuffer()` logic.
+
+**Fix**:
+- Skip terminal tabs and invalid buffers in task-list/MRU generation.
+- Use terminal-specific activation for terminal replacement tabs.
+- Add defensive buffer checks in file-close, view-state, and document-state paths.
+- Remove terminal objects only after their tab entries are removed.
+
+Full write-up: `PowerEditor/src/WinControls/TerminalPanel/BUGFIX_FILE_TAB_CLOSE_WITH_TERMINAL.md`
+
 
 | Item | Status |
 |------|--------|
@@ -311,6 +325,7 @@ Full write-up: `PowerEditor/src/WinControls/TerminalPanel/BUGFIX_CONPTY_BLANK_PO
 | ANSI parser coverage | ⚠️ Supports common cursor/edit modes, 16/256/truecolor SGR and bracketed paste; not a complete VT emulator |
 | Full-screen TUI applications | ⚠️ Basic operation only; alternate-screen, mouse reporting and all DEC modes are not complete |
 | ~~Blank PowerShell terminal~~ | ✅ Fixed: `STARTF_USESTDHANDLES` + ConPTY handles wired as hosted process stdio; prompt verified in-app |
+| ~~Closing file tab with PowerShell tab crashes app~~ | ✅ Fixed: terminal tabs excluded from file-buffer/MRU paths; terminal-specific activation and defensive checks added |
 | Space-in-path build issue | ✅ Documented and resolved: two-step build (`NppLibsVersionH-generator.bat` + `cd PowerEditor/gcc && mingw32-make binary`) avoids spaces issue; `BUILD_GUIDE.md` updated |
 
 ---
@@ -323,6 +338,7 @@ Full write-up: `PowerEditor/src/WinControls/TerminalPanel/BUGFIX_CONPTY_BLANK_PO
 | `IDM_VIEW_OPEN_TERMINAL_PS` launches PowerShell | PASS — verified in-app after Bug 11 fix |
 | `IDM_VIEW_OPEN_TERMINAL_CMD` still opens cmd.exe | PASS — unaffected by fix |
 | Blank-terminal regression (Bug 12) | PASS — standalone ConPTY test alive; in-app prompt `PS C:\...>` confirmed |
+| File-tab close with PowerShell tabs (Bug 13) | PASS — reproduced with multiple terminal/file tabs, then verified fixed after rebuild |
 
 ## Test Results (2026-07-28)
 

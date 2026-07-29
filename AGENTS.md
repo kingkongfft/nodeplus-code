@@ -28,7 +28,14 @@ The main executable is `nodeplus-code.exe`, built from `PowerEditor/`. It embeds
 ### MinGW-w64 (MSYS2) — recommended local build
 ```bash
 # Repository build script (from repo root in Git Bash)
-./build-local.sh
+./build-local.sh          # incremental release build
+./build-local.sh --clean  # full clean release build
+./build-local.sh --debug  # incremental debug build
+./build-local.sh --clean --debug
+
+# The script requires MinGW-w64 at /c/msys64 and writes its log to
+# .build_temp/build.log. It generates the library version header before
+# invoking the GCC makefile.
 
 # Incremental build only (faster)
 cd PowerEditor/gcc

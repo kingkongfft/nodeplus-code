@@ -29,6 +29,7 @@
 #include <cwchar>
 #include <cwctype>
 #include <algorithm>
+#include <share.h>      // _SH_DENYNO for _wfsopen
 #include <strsafe.h>
 #include <windowsx.h>   // GET_X_LPARAM / GET_Y_LPARAM
 
@@ -36,12 +37,31 @@
 #define WM_APP_TERM_SYNCSCROLL (WM_APP + 0x51)
 #define WM_APP_TERM_SELECTALL  (WM_APP + 0x52)
 
+// Debounce timer for WM_SIZE -> ResizePseudoConsole. The docking panel fires
+// a burst of WM_SIZE while it settles into its final layout (host window
+// creation, docking animation, splitter drag). Forwarding every intermediate
+// size to ConPTY makes PowerShell/PSReadLine repaint its prompt over and
+// over, and it can end up interrupted mid-redraw on a cleared screen with
+// nothing drawn yet -- i.e. a terminal that looks permanently blank. Instead
+// we buffer the pending size and only push it to the PTY once no further
+// WM_SIZE has arrived for RESIZE_DEBOUNCE_MS.
+#define IDT_TERM_RESIZE 1001
+#define RESIZE_DEBOUNCE_MS 400
+
+
 // --- Debug logger ---
-// Off by default: the log file was opened for every terminal session and
-// flushed on every PTY read, which measurably slowed down output. Set the
-// environment variable NPP_TERMINAL_DEBUG=1 to enable it.
+// Hard-coded on: writes next to notepad++.exe as npp_terminal_debug.log so
+// it is trivial to find regardless of how/where the app was launched (no
+// env var propagation needed to an already-running GUI process). Flip
+// TERM_LOG_HARDCODED_ENABLED to 0 to fall back to the NPP_TERMINAL_DEBUG=1
+// opt-in behaviour if the always-on logging becomes a perf concern again.
+#define TERM_LOG_HARDCODED_ENABLED 1
+
 static bool termLogEnabled()
 {
+#if TERM_LOG_HARDCODED_ENABLED
+	return true;
+#else
 	static int enabled = -1;
 	if (enabled < 0)
 	{
@@ -50,6 +70,7 @@ static bool termLogEnabled()
 		enabled = (n > 0 && v[0] != L'0') ? 1 : 0;
 	}
 	return enabled == 1;
+#endif
 }
 
 static void termLog(const wchar_t* fmt, ...)
@@ -64,14 +85,28 @@ static void termLog(const wchar_t* fmt, ...)
 	buf[1023] = L'\0';
 	::OutputDebugStringW(buf);
 
-	// Also write to temp file
+	// Also write to a file next to the running executable.
+	// Use _wfsopen with _SH_DENYNO so external readers (Get-Content, etc.)
+	// can open the file concurrently while the process is running.
 	static FILE* logFile = nullptr;
 	if (!logFile)
 	{
-		wchar_t logPath[MAX_PATH];
-		::GetEnvironmentVariableW(L"TEMP", logPath, MAX_PATH);
-		wcscat_s(logPath, L"\\npp_terminal_debug.log");
-		_wfopen_s(&logFile, logPath, L"w");
+		wchar_t logPath[MAX_PATH] = {};
+		DWORD n = ::GetModuleFileNameW(nullptr, logPath, MAX_PATH);
+		if (n == 0 || n >= MAX_PATH)
+		{
+			// Fallback: TEMP dir if the exe path can't be resolved.
+			::GetEnvironmentVariableW(L"TEMP", logPath, MAX_PATH);
+			wcscat_s(logPath, L"\\npp_terminal_debug.log");
+		}
+		else
+		{
+			wchar_t* lastSlash = wcsrchr(logPath, L'\\');
+			if (lastSlash) *(lastSlash + 1) = L'\0';
+			else logPath[0] = L'\0';
+			wcscat_s(logPath, L"npp_terminal_debug.log");
+		}
+		logFile = _wfsopen(logPath, L"w", _SH_DENYNO);
 	}
 	if (logFile)
 	{
@@ -231,10 +266,11 @@ bool TerminalPanel::createPseudoConsole(COORD size)
 		return false;
 	}
 
-	// CreatePseudoConsole retains the console-side endpoints. Close our copies
-	// so shutdown and natural EOF are not kept alive by leaked pipe handles.
-	::CloseHandle(inPipeRead);
-	::CloseHandle(outPipeWrite);
+	// Keep the console-side endpoints alive until CreateProcess completes.
+	// Microsoft documents that closing them between CreatePseudoConsole and
+	// CreateProcess can break the channel while the hosted process attaches.
+	_ptyInputReadSide = inPipeRead;
+	_ptyOutputWriteSide = outPipeWrite;
 	_ptyInput  = inPipeWrite;   // we write here -> goes to process stdin
 	_ptyOutput = outPipeRead;   // process stdout -> we read from here
 
@@ -246,6 +282,10 @@ bool TerminalPanel::startProcess(const std::wstring& cmdLine, const std::wstring
 	TERM_LOG(L"startProcess: cmd='%s' dir='%s'", cmdLine.c_str(), workingDir.c_str());
 	STARTUPINFOEXW siEx = {};
 	siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+	siEx.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+	siEx.StartupInfo.hStdInput = _ptyInputReadSide;
+	siEx.StartupInfo.hStdOutput = _ptyOutputWriteSide;
+	siEx.StartupInfo.hStdError = _ptyOutputWriteSide;
 
 	// Set up the PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE
 	SIZE_T attrListSize = 0;
@@ -334,18 +374,24 @@ bool TerminalPanel::startProcess(const std::wstring& cmdLine, const std::wstring
 		}
 	}
 
+	// Diagnostic: inherit the parent environment directly. This isolates the
+	// ConPTY/process setup from the hand-built environment block above.
 	BOOL success = ::CreateProcessW(
 		nullptr,          // lpApplicationName
 		cmdCopy,          // lpCommandLine
 		nullptr,          // lpProcessAttributes
 		nullptr,          // lpThreadAttributes
 		FALSE,            // bInheritHandles
-		EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
-		envBlock,         // lpEnvironment
+		EXTENDED_STARTUPINFO_PRESENT,
+		nullptr,          // lpEnvironment (inherit parent environment)
 		dir,              // lpCurrentDirectory
 		&siEx.StartupInfo, // lpStartupInfo
 		&pi               // lpProcessInformation
 	);
+
+	// Diagnostic: retain the console-side endpoints for the full session.
+	// If the shell now stays alive, its previous clean exit was caused by the
+	// input channel observing EOF during/after pseudoconsole attachment.
 
 	TERM_LOG(L"startProcess: CreateProcess result=%d err=%lu pid=%lu",
 		success, success ? 0 : ::GetLastError(), success ? pi.dwProcessId : 0);
@@ -418,6 +464,8 @@ void TerminalPanel::launchShell(const std::wstring& shellPath, const std::wstrin
 		_hPC = nullptr;
 		::CloseHandle(_ptyInput);  _ptyInput = nullptr;
 		::CloseHandle(_ptyOutput); _ptyOutput = nullptr;
+		if (_ptyInputReadSide) { ::CloseHandle(_ptyInputReadSide); _ptyInputReadSide = nullptr; }
+		if (_ptyOutputWriteSide) { ::CloseHandle(_ptyOutputWriteSide); _ptyOutputWriteSide = nullptr; }
 		::MessageBoxW(_hSelf, L"Failed to launch shell process.",
 			L"Terminal", MB_OK | MB_ICONERROR);
 		return;
@@ -444,6 +492,12 @@ void TerminalPanel::launchShell(const std::wstring& shellPath, const std::wstrin
 	_readerThread = std::thread(&TerminalPanel::readerThreadProc, this);
 	TERM_LOG(L"launchShell: reader thread started, pid=%lu", ::GetProcessId(_hProcess));
 
+	// ConPTY's conhost.exe keeps the output pipe open even after the child
+	// shell process dies, so ReadFile() in readerThreadProc never sees EOF
+	// and we never learn the shell exited (the panel just goes silent).
+	// Watch the process handle directly so a crash/early-exit is diagnosable.
+	_watchThread = std::thread(&TerminalPanel::watchProcessExit, this);
+
 	// Install keyboard hook to capture keys before Scintilla.
 	// The hook checks GetFocus() at runtime — only eats keys when the
 	// terminal child window (or its parent dialog) has keyboard focus.
@@ -451,6 +505,23 @@ void TerminalPanel::launchShell(const std::wstring& shellPath, const std::wstrin
 
 	// Show the window
 	::ShowWindow(_hTermWnd, SW_SHOW);
+}
+
+void TerminalPanel::watchProcessExit()
+{
+	HANDLE hProc = _hProcess;
+	if (!hProc) return;
+	DWORD waitResult = ::WaitForSingleObject(hProc, INFINITE);
+	if (waitResult == WAIT_OBJECT_0)
+	{
+		DWORD exitCode = 0;
+		::GetExitCodeProcess(hProc, &exitCode);
+		TERM_LOG(L"watchProcessExit: shell process exited, exitCode=%lu (0x%08lX)", exitCode, exitCode);
+	}
+	else
+	{
+		TERM_LOG(L"watchProcessExit: WaitForSingleObject returned %lu, err=%lu", waitResult, ::GetLastError());
+	}
 }
 
 void TerminalPanel::readerThreadProc()
@@ -491,7 +562,13 @@ void TerminalPanel::readerThreadProc()
 	}
 
 	// Process exited
-	TERM_LOG(L"readerThread: process exited, thread ending");
+	{
+		DWORD exitCode = 0;
+		if (_hProcess && ::GetExitCodeProcess(_hProcess, &exitCode))
+			TERM_LOG(L"readerThread: process exited, exitCode=%lu (0x%08lX)", exitCode, exitCode);
+		else
+			TERM_LOG(L"readerThread: process exited, exitCode unavailable");
+	}
 	_running = false;
 	if (_hTermWnd)
 		::InvalidateRect(_hTermWnd, nullptr, FALSE);
@@ -499,6 +576,7 @@ void TerminalPanel::readerThreadProc()
 
 void TerminalPanel::terminate()
 {
+	TERM_LOG(L"terminate: entered, running=%d hProcess=%p hPC=%p", _running.load() ? 1 : 0, _hProcess, _hPC);
 	uninstallKbHook();
 	_running = false;
 
@@ -519,9 +597,21 @@ void TerminalPanel::terminate()
 
 	if (_hProcess)
 	{
+		TERM_LOG(L"terminate: calling TerminateProcess pid=%lu", ::GetProcessId(_hProcess));
 		::TerminateProcess(_hProcess, 0);
+		// TerminateProcess above makes the WaitForSingleObject in
+		// watchProcessExit return almost immediately; join it before
+		// closing the handle it is waiting on.
+		if (_watchThread.joinable())
+			_watchThread.join();
 		::CloseHandle(_hProcess);
 		_hProcess = nullptr;
+	}
+	if (_ptyInputReadSide) { ::CloseHandle(_ptyInputReadSide); _ptyInputReadSide = nullptr; }
+	if (_ptyOutputWriteSide) { ::CloseHandle(_ptyOutputWriteSide); _ptyOutputWriteSide = nullptr; }
+	else if (_watchThread.joinable())
+	{
+		_watchThread.join();
 	}
 
 	if (_readerThread.joinable())
@@ -760,12 +850,14 @@ void TerminalPanel::processOutput(const char* data, DWORD len)
 			else if (c == '?' || c == '>' || c == '<' || c == '=')
 			{
 				_ansiQuestionMark = true;
+				_ansiPrefixChar = static_cast<char>(c);
 			}
 			else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '@' || c == '`')
 			{
 				_ansiFinalByte = c;
 				handleANSIEscape();
 				_ansiState = TS_NORMAL;
+				_ansiPrefixChar = 0;
 			}
 			// else ignore intermediate bytes
 			break;
@@ -777,13 +869,17 @@ void TerminalPanel::processOutput(const char* data, DWORD len)
 			// title leaked into the visible output.
 			if (c == 0x07)
 			{
+				handleOSC();
 				_ansiState = TS_NORMAL;
 			}
 			else if (_ansiOscEsc)
 			{
 				_ansiState = TS_NORMAL;   // ESC \ (ST) or malformed — end it
 				if (c != '\\')
+				{
 					continue;               // reinterpret this byte
+				}
+				handleOSC();
 			}
 			else if (c == 0x1B)
 			{
@@ -947,6 +1043,7 @@ void TerminalPanel::handleANSIEscape()
 				ensureRow(_screenTop + (_rows > 0 ? _rows - 1 : 0));
 				_cursorRow = _screenTop;
 				_cursorCol = 0;
+				_scrollTop = _screenTop;  // keep viewport in sync with new screen
 				_autoScroll = true;
 			}
 		}
@@ -1038,6 +1135,8 @@ void TerminalPanel::handleANSIEscape()
 				if (prm == 25)        _cursorVisible = true;
 				else if (prm == 2004) _bracketedPaste = true;   // enable bracketed paste
 				else if (prm == 1)    _appCursorKeys = true;    // DECCKM
+				else if (prm == 1049 || prm == 47 || prm == 1047)
+					enterAltScreen();   // full-screen TUI apps (vim, opencode, htop, ...)
 			}
 		}
 		break;
@@ -1050,6 +1149,8 @@ void TerminalPanel::handleANSIEscape()
 				if (prm == 25)        _cursorVisible = false;
 				else if (prm == 2004) _bracketedPaste = false;
 				else if (prm == 1)    _appCursorKeys = false;
+				else if (prm == 1049 || prm == 47 || prm == 1047)
+					leaveAltScreen();
 			}
 		}
 		break;
@@ -1061,6 +1162,57 @@ void TerminalPanel::handleANSIEscape()
 			int row = static_cast<int>(_cursorRow >= _screenTop ? _cursorRow - _screenTop : 0) + 1;
 			sendTextToTerminal("\x1b[" + std::to_string(row) + ";" +
 				std::to_string(_cursorCol + 1) + "R");
+		}
+		break;
+
+	case 'c': // DA - Device Attributes (bare CSI c = DA1, CSI > c = DA2)
+		// Many TUI frameworks (opencode's opentui, and other Rust/Go/JS
+		// terminal libs) send a DA query as part of capability detection
+		// and gate real rendering on receiving a response. Without any
+		// reply the app can appear to hang on a blank screen forever.
+		if (_ansiPrefixChar == '>')
+		{
+			// DA2: "I am terminal type;firmware version;keyboard 0"
+			sendTextToTerminal("\x1b[>0;10;0c");
+		}
+		else
+		{
+			// DA1: claim basic VT220 compliance (no special features)
+			sendTextToTerminal("\x1b[?62c");
+		}
+		break;
+
+	case 'u': // Kitty keyboard protocol query (CSI ? u) / report (CSI <flags> u)
+		if (_ansiQuestionMark)
+		{
+			// "What keyboard protocol flags are active?" — reply with 0
+			// (no enhanced flags) so apps that gate on this response (e.g.
+			// opencode/opentui) stop blocking and fall back to legacy input.
+			sendTextToTerminal("\x1b[?0u");
+		}
+		break;
+
+	case 't': // XTWINOPS - window/report queries
+		if (!_ansiQuestionMark && params.size() >= 1)
+		{
+			if (params[0] == 14)
+			{
+				// Report text-area size in pixels: CSI 4 ; height ; width t
+				sendTextToTerminal("\x1b[4;" + std::to_string(_rows * _charHeight) + ";" +
+					std::to_string(_cols * _charWidth) + "t");
+			}
+			else if (params[0] == 18)
+			{
+				// Report text-area size in characters: CSI 8 ; rows ; cols t
+				sendTextToTerminal("\x1b[8;" + std::to_string(_rows) + ";" +
+					std::to_string(_cols) + "t");
+			}
+			else if (params[0] == 19)
+			{
+				// Report screen size in characters: CSI 9 ; rows ; cols t
+				sendTextToTerminal("\x1b[9;" + std::to_string(_rows) + ";" +
+					std::to_string(_cols) + "t");
+			}
 		}
 		break;
 	}
@@ -1133,12 +1285,111 @@ void TerminalPanel::processSGR()
 	}
 }
 
+void TerminalPanel::handleOSC()
+{
+	// _ansiParams holds the OSC payload, e.g. "0;title" or "4;0;?" or
+	// "1337;Capabilities" or "99;i=...;p=?;...". Several TUI frameworks
+	// (opencode's "opentui" stack among them) send OSC capability/color
+	// queries during startup and gate their first real frame on getting
+	// *some* reply. Without any response the app can sit forever on the
+	// blank placeholder frame it already drew — exactly the "opencode
+	// hangs blank" symptom. We don't implement these features, but we
+	// must still answer so the app's probe completes and it moves on.
+	const std::string& s = _ansiParams;
+	size_t semi = s.find(';');
+	if (semi == std::string::npos)
+		return;
+
+	std::string codeStr = s.substr(0, semi);
+	std::string rest = s.substr(semi + 1);
+	int code = 0;
+	try { code = std::stoi(codeStr); } catch (...) { return; }
+
+	if (code == 4)
+	{
+		// OSC 4 ; <index> ; ? — query palette color at <index>.
+		// Reply: OSC 4 ; <index> ; rgb:RRRR/GGGG/BBBB BEL
+		size_t semi2 = rest.find(';');
+		if (semi2 != std::string::npos && rest.substr(semi2 + 1) == "?")
+		{
+			int idx = 0;
+			try { idx = std::stoi(rest.substr(0, semi2)); } catch (...) { idx = 0; }
+			COLORREF col = (idx >= 0 && idx < 16) ? _stdColors[idx] : _stdColors[0];
+			wchar_t buf[64];
+			_snwprintf(buf, 64, L"\x1b]4;%d;rgb:%02x%02x/%02x%02x/%02x%02x\x07",
+				idx, GetRValue(col), GetRValue(col), GetGValue(col), GetGValue(col),
+				GetBValue(col), GetBValue(col));
+			std::wstring wbuf(buf);
+			std::string out(wbuf.begin(), wbuf.end());
+			sendTextToTerminal(out);
+		}
+	}
+	else if (code == 10 || code == 11)
+	{
+		// OSC 10/11 ; ? — query default foreground/background color.
+		if (rest == "?")
+		{
+			COLORREF col = (code == 10) ? _stdColors[7] : _stdColors[0];
+			wchar_t buf[48];
+			_snwprintf(buf, 48, L"\x1b]%d;rgb:%02x%02x/%02x%02x/%02x%02x\x07", code,
+				GetRValue(col), GetRValue(col), GetGValue(col), GetGValue(col),
+				GetBValue(col), GetBValue(col));
+			std::wstring wbuf(buf);
+			std::string out(wbuf.begin(), wbuf.end());
+			sendTextToTerminal(out);
+		}
+	}
+	// OSC 0/1/2 (window/icon title) and other cosmetic OSCs are simply
+	// consumed above with no reply needed (real terminals don't answer
+	// them either). OSC 99 (notifications), 1337 (iTerm2 capabilities),
+	// and 66 (tab sizing hints) also don't require a written reply — they
+	// are "fire and forget" hints from the app, not queries, so leaving
+	// them unanswered is correct and matches real-terminal behavior.
+}
+
+void TerminalPanel::enterAltScreen()
+{
+	if (_inAltScreen) return;
+	_inAltScreen = true;
+	_savedBuffer = _buffer;
+	_savedScrollTop = _scrollTop;
+	_savedScreenTop = _screenTop;
+	_savedCursorRow = _cursorRow;
+	_savedCursorCol = _cursorCol;
+
+	// Full-screen apps redraw from a blank canvas; starting the alt screen
+	// at a fresh buffer (rather than continuing the main scrollback) keeps
+	// their frame redraws from interleaving with prior shell output.
+	_buffer.clear();
+	_screenTop = 0;
+	_scrollTop = 0;
+	_cursorRow = 0;
+	_cursorCol = 0;
+	clearSelection();
+	ensureRow(static_cast<size_t>(_rows > 0 ? _rows - 1 : 0));
+}
+
+void TerminalPanel::leaveAltScreen()
+{
+	if (!_inAltScreen) return;
+	_inAltScreen = false;
+	_buffer = _savedBuffer;
+	_scrollTop = _savedScrollTop;
+	_screenTop = _savedScreenTop;
+	_cursorRow = _savedCursorRow;
+	_cursorCol = _savedCursorCol;
+	_savedBuffer.clear();
+	clearSelection();
+	_autoScroll = true;
+}
+
 void TerminalPanel::resetANSIParser()
 {
 	_ansiState = TS_NORMAL;
 	_ansiParams.clear();
 	_ansiFinalByte = 0;
 	_ansiQuestionMark = false;
+	_ansiPrefixChar = 0;
 	_ansiOscEsc = false;
 	_utf8Acc = 0;
 	_utf8Remaining = 0;
@@ -1660,6 +1911,20 @@ LRESULT TerminalPanel::runTermProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
 	case WM_SIZE:
 		onTermResize(hwnd, LOWORD(lParam), HIWORD(lParam));
 		return 0;
+
+	case WM_TIMER:
+		if (wParam == IDT_TERM_RESIZE)
+		{
+			::KillTimer(hwnd, IDT_TERM_RESIZE);
+			if (_resizePending)
+			{
+				_resizePending = false;
+				TERM_LOG(L"WM_TIMER: debounced resizePseudoConsole %dx%d", _pendingCols, _pendingRows);
+				resizePseudoConsole(_pendingCols, _pendingRows);
+			}
+			return 0;
+		}
+		break;
 
 	case WM_KEYDOWN:
 	{
@@ -2235,7 +2500,19 @@ void TerminalPanel::onTermResize(HWND hwnd, int width, int height)
 				line.cells.resize(_cols, { L' ', _stdColors[7], _stdColors[0] });
 		}
 
-		resizePseudoConsole(_cols, _rows);
+		// Don't push every intermediate size straight to ConPTY: the panel
+		// fires a burst of WM_SIZE while docking/layout settles, and each
+		// ResizePseudoConsole call makes PowerShell/PSReadLine repaint its
+		// prompt. If a new resize interrupts that repaint before it finishes,
+		// the shell can be left with a cleared screen and nothing redrawn --
+		// i.e. a terminal that looks permanently blank. Debounce: remember
+		// the latest size and only tell the PTY once sizing has been quiet
+		// for RESIZE_DEBOUNCE_MS.
+		_resizePending = true;
+		_pendingCols = _cols;
+		_pendingRows = _rows;
+		::SetTimer(hwnd, IDT_TERM_RESIZE, RESIZE_DEBOUNCE_MS, nullptr);
+
 		updateScrollBar();
 		if (_autoScroll) scrollToBottom();
 
@@ -2246,6 +2523,7 @@ void TerminalPanel::onTermResize(HWND hwnd, int width, int height)
 		updateScrollBar();
 	}
 }
+
 
 void TerminalPanel::scrollTerm(int delta)
 {
@@ -2399,6 +2677,7 @@ intptr_t CALLBACK TerminalPanel::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 		auto* pnmh = reinterpret_cast<LPNMHDR>(lParam);
 		if (pnmh->hwndFrom == _hParent && pnmh->code == DMN_CLOSE)
 		{
+			TERM_LOG(L"run_dlgProc: DMN_CLOSE received");
 			terminate();
 			if (_hTermWnd)
 			{
@@ -2412,6 +2691,7 @@ intptr_t CALLBACK TerminalPanel::run_dlgProc(UINT message, WPARAM wParam, LPARAM
 	}
 
 	case WM_DESTROY:
+		TERM_LOG(L"run_dlgProc: WM_DESTROY");
 		terminate();
 		if (_hTermWnd)
 		{

@@ -28,7 +28,7 @@ BIN_DIRECTORY := ../bin
 INSTALLER_DIRECTORY := ../installer
 XML4CONF_DIRECTORY := ../installer/xml4Config
 
-TARGET_BINARY := notepad++.exe
+TARGET_BINARY := nodeplus-code.exe
 SRC_DATA := langs.model.xml stylers.model.xml tabContextMenu_example.xml toolbarButtonsConf_example.xml
 BIN_DATA := change.log readme.txt userDefineLangs/
 INSTALLER_DATA := autoCompletion/ functionList/ localization/ themes/

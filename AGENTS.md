@@ -65,6 +65,83 @@ mingw32-make -f PowerEditor/gcc/makefile CXX=clang++ CLANGANALYZE=1
 - Output directories are named `bin.<compiler>.<arch>` with `-debug` for debug binaries.
 - The makefile enables `-Wpedantic -Wall -Wextra -Wconversion`; fix new warnings.
 
+## Active local build method: MinGW-w64 (MSYS2)
+
+VS 2022 is installed but lacks the "Desktop development with C++" workload. Use MSYS2/MinGW-w64 for local builds.
+
+**Environment:**
+- MSYS2: `C:/msys64`
+- g++: `C:/msys64/mingw64/bin/g++.exe`
+- mingw32-make: `C:/msys64/mingw64/bin/mingw32-make.exe`
+
+**Output:** `PowerEditor/gcc/bin.gcc.x86_64/nodeplus-code.exe` (~13 MB)
+
+**Component versions (current):**
+- Scintilla 5.6.4 / Lexilla 5.5.1 / Boost Regex 1_90
+
+**Useful flags:**
+
+| Flag | Effect |
+|------|--------|
+| `DEBUG=1` | Debug build |
+| `VERBOSE=1` | Verbose output |
+| `-j$(nproc)` | Parallel build (all CPU cores) |
+
+### Path-with-spaces workaround (required when repo is under a path containing spaces)
+
+The MinGW makefile passes `$(CURDIR)` to sub-makes without quoting. If the repo path contains spaces (e.g. `OneDrive - EPAM`), the `all` target fails when building Scintilla/Lexilla. Use the two-step procedure below instead.
+
+**Step 1 — generate the version header** (run once per clean, from repo root, Git Bash or cmd):
+
+```bash
+cmd /C "PowerEditor\\src\\NppLibsVersionH-generator.bat"
+```
+
+**Step 2 — build from within `PowerEditor/gcc/`** (relative paths avoid the space issue):
+
+```bash
+export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
+cd PowerEditor/gcc
+mingw32-make -j$(nproc)
+# or for the binary target only (Scintilla/Lexilla already built):
+mingw32-make binary -j$(nproc)
+```
+
+Running through MSYS2 bash explicitly also works:
+
+```bash
+"C:/msys64/usr/bin/bash.exe" -lc '
+  export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
+  cd "$(cygpath -u "<REPO_ROOT>/PowerEditor/gcc")"
+  mingw32-make -j$(nproc)
+'
+```
+
+**Clean build:**
+
+```bash
+# From repo root (Git Bash / cmd)
+export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
+mingw32-make -f PowerEditor/gcc/makefile clean
+
+# Then follow the two-step build above
+```
+
+> If the repo root path does **not** contain spaces the standard one-liner still works:
+> ```bash
+> export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
+> mingw32-make -f PowerEditor/gcc/makefile -j$(nproc)
+> ```
+
+**VS build** (once C++ workload is installed — run from Git Bash/MSYS2):
+
+```bash
+MSYS_NO_PATHCONV=1 "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" \
+  PowerEditor/visual.net/notepadPlus.sln /m /p:configuration=Release /p:platform=x64
+```
+
+> `MSYS_NO_PATHCONV=1` prevents Git Bash/MSYS2 from converting `/p:` flags to paths.
+
 ## Lint and validation
 
 - There is no repository-wide formatter or standalone lint command; a clean warning-free build is the C++ lint gate.

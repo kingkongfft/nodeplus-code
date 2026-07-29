@@ -352,13 +352,13 @@ void Notepad_plus::command(int id)
 				psInitialized = true;
 			}
 
-			// Build command line: PowerShell with -NoLogo (skip banner) and -NoExit
+		// Build command line: PowerShell with -NoLogo (skip banner) and -NoExit
 		// (stay open). Working directory is set via CreateProcess lpCurrentDirectory,
 		// so no -Command cd is needed — avoids garbled startup output.
 		std::wstring workingDir = getTerminalWorkingDir(_pPublicInterface->getHSelf());
 
 		wchar_t fullCmd[4096];
-		wsprintfW(fullCmd, L"\"%s\" -NoLogo -NoExit", psPath);
+		swprintf_s(fullCmd, L"\"%s\" -NoLogo -NoExit", psPath);
 
 		launchTerminal(fullCmd, workingDir);
 		}

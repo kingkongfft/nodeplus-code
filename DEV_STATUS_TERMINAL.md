@@ -1,6 +1,6 @@
 # Notepad++ Embedded Terminal — Development Status
 
-**Date**: 2026-07-28  
+**Date**: 2026-07-29
 **Branch**: `master` (local)  
 **Feature**: Embedded ConPTY terminal — PowerShell / cmd / Git Bash / Windows Terminal
 
@@ -10,6 +10,8 @@
 
 Embedded terminal panel using Windows ConPTY API (`CreatePseudoConsole`). Supports PowerShell 7 (`pwsh.exe`) with `-NoLogo -NoExit`, with Windows PowerShell 5.1 fallback. Command Prompt, Git Bash, and Windows Terminal are also available. The terminal is docked at the bottom and can be recreated after closing. PowerShell copy/paste, keyboard navigation, Unicode output, selection, scrollback, and ANSI rendering were substantially hardened and manually verified in-app.
 
+The `IDM_VIEW_OPEN_TERMINAL` / `IDM_VIEW_OPEN_TERMINAL_PS` menu items now correctly launch PowerShell. A diagnostic `cmd.exe /D /K echo CONPTY_READY` override that was left in `NppCommands.cpp` has been removed; the resolved `psPath` is used directly.
+
 ---
 
 ## Files Changed
@@ -17,7 +19,7 @@ Embedded terminal panel using Windows ConPTY API (`CreatePseudoConsole`). Suppor
 | File | Change |
 |------|--------|
 | `PowerEditor/src/Notepad_plus.cpp` | `launchTerminal()`: creates singleton TerminalPanel, docks it, handles re-creation after close |
-| `PowerEditor/src/NppCommands.cpp` | PowerShell 7 detection (pwsh.exe) + PS5 fallback; `-NoLogo -NoExit` flags; `getTerminalWorkingDir()` |
+| `PowerEditor/src/NppCommands.cpp` | PowerShell 7 detection (pwsh.exe) + PS5 fallback; `-NoLogo -NoExit` flags; `getTerminalWorkingDir()`; removed `cmd.exe` diagnostic override |
 | `PowerEditor/src/WinControls/TerminalPanel/TerminalPanel.h` | Terminal state, synchronized ConPTY input, ANSI modes, UTF-8 decoder, selection and rendering state |
 | `PowerEditor/src/WinControls/TerminalPanel/TerminalPanel.cpp` | ConPTY lifecycle, clipboard operations, keyboard translation, reader thread, ANSI parser, selection and rendering |
 | `PowerEditor/src/WinControls/TerminalPanel/TerminalPanel.rc` | Empty dialog resource (only child is programmatic terminal window) |
@@ -78,9 +80,9 @@ Menu Bar -> Terminal (top-level POPUP, MENUINDEX_TERMINAL=4)
 |-----------|------|
 | g++ | `C:\msys64\mingw64\bin\g++.exe` (16.1.0) |
 | mingw32-make | `C:\msys64\mingw64\bin\mingw32-make.exe` |
-| Build cmd | `cd PowerEditor/gcc && mingw32-make -j$(nproc) PREBUILD_EVENT_CMD=":"` |
+| Build cmd | `cd PowerEditor/gcc && mingw32-make -j$(nproc)` (two-step: run `NppLibsVersionH-generator.bat` first) |
 | Output | `PowerEditor/gcc/bin.gcc.x86_64/notepad++.exe` (~12.8 MB) |
-| Note | Paths with spaces (e.g., `OneDrive - EPAM`) require pre-running `NppLibsVersionH-generator.bat` via PowerShell, then `PREBUILD_EVENT_CMD=":"` |
+| Note | Paths with spaces (e.g., `OneDrive - EPAM`) require pre-running `NppLibsVersionH-generator.bat` via `cmd`, then building from `PowerEditor/gcc/` using relative paths. See `BUILD_GUIDE.md`. |
 
 ---
 
@@ -198,9 +200,72 @@ termKbHookProc(nCode, wParam, lParam):
 
 ## Known Limitations
 
+### Bug 11: Terminal PowerShell menu opens CMD instead of PowerShell 🔴->🟢
+
+**Root cause**: `NppCommands.cpp` (line 363) had a temporary diagnostic override — after correctly resolving `psPath` via registry, the code discarded it and hard-coded `cmd.exe /D /K echo CONPTY_READY` as the launch command. This was left in from a ConPTY diagnostic session.
+
+**Fix**: Replaced the `wcscpy_s(fullCmd, L"cmd.exe /D /K echo CONPTY_READY")` line with:
+```cpp
+swprintf_s(fullCmd, L"\"%s\" -NoLogo -NoExit", psPath);
+```
+The resolved `psPath` (pwsh.exe → powershell.exe fallback chain) is now used correctly. Quoting handles install paths with spaces.
+
+---
+
+## Bug 12: Blank PowerShell Terminal — Fixed (2026-07-29)
+
+### Symptom
+
+Terminal panel opened with a black, empty display; no `PS C:\...>` prompt was visible.
+Diagnostics are written beside the executable to `npp_terminal_debug.log`.
+
+### Evidence
+
+The log showed successful ConPTY and process creation followed by no prompt:
+
+```text
+[TERM] createPseudoConsole: CreatePseudoConsole hr=0x00000000
+[TERM] startProcess: CreateProcess result=1 err=0 pid=12460
+[TERM] RAW[16]: \e[?9001h\e[?1004h
+[TERM] RAW[140]: \e[?25l\e[2J\e[m\e[H\r\n...(blank lines)...
+[TERM] watchProcessExit: shell process exited, exitCode=0 (0x00000000)
+```
+
+### Root Cause
+
+`CreateProcessW` was called with `EXTENDED_STARTUPINFO_PRESENT` but **without**
+`STARTF_USESTDHANDLES` in `StartupInfo.dwFlags`. The ConPTY pipe endpoints were therefore
+not wired as the hosted process's standard input/output/error. The shell could not reliably
+connect its stdio streams to the PTY channel, causing the blank display and early exit.
+
+### Fix
+
+In `TerminalPanel::startProcess()`, before `CreateProcessW`:
+
+```cpp
+siEx.StartupInfo.dwFlags    = STARTF_USESTDHANDLES;
+siEx.StartupInfo.hStdInput  = _ptyInputReadSide;
+siEx.StartupInfo.hStdOutput = _ptyOutputWriteSide;
+siEx.StartupInfo.hStdError  = _ptyOutputWriteSide;
+```
+
+### Validation
+
+- Standalone ConPTY test (`conpty_noexit_test.cpp`) confirmed the fix: `pwsh.exe -NoLogo -NoExit`
+  survived beyond 5 seconds with `STARTF_USESTDHANDLES`; exited within 5 seconds without it.
+- Rebuilt with `mingw32-make binary -j$(nproc)` — clean compile, no new errors.
+- In-app prompt confirmed in log:
+
+```text
+[TERM] RAW[25]: PS C:\Users\Water_Zhong>
+```
+
+Full write-up: `PowerEditor/src/WinControls/TerminalPanel/BUGFIX_CONPTY_BLANK_POWERSHELL.md`
+
+
 | Item | Status |
 |------|--------|
-| ~~PS7 (pwsh.exe) not auto-detected~~ | ✅ Fixed: checks pwsh.exe first, falls back to PS5 |
+| ~~Terminal PowerShell menu opens CMD~~ | ✅ Fixed: removed `cmd.exe` diagnostic override; `psPath` now used directly |
 | Windows Terminal (wt.exe) must be installed separately | ⚠️ Not bundled with Windows |
 | ~~Terminal background white / unreadable~~ | ✅ Fixed: always dark (RGB 12,12,12) |
 | ~~Keyboard hook eats all global keys~~ | ✅ Fixed: focus-aware via IsChild() |
@@ -208,9 +273,19 @@ termKbHookProc(nCode, wParam, lParam):
 | No session persistence | ⚠️ Closing Notepad++ kills the shell |
 | ANSI parser coverage | ⚠️ Supports common cursor/edit modes, 16/256/truecolor SGR and bracketed paste; not a complete VT emulator |
 | Full-screen TUI applications | ⚠️ Basic operation only; alternate-screen, mouse reporting and all DEC modes are not complete |
-| Space-in-path build issue | ⚠️ `cmd //C` pre-build event fails with spaces; workaround documented |
+| ~~Blank PowerShell terminal~~ | ✅ Fixed: `STARTF_USESTDHANDLES` + ConPTY handles wired as hosted process stdio; prompt verified in-app |
+| Space-in-path build issue | ✅ Documented and resolved: two-step build (`NppLibsVersionH-generator.bat` + `cd PowerEditor/gcc && mingw32-make binary`) avoids spaces issue; `BUILD_GUIDE.md` updated |
 
 ---
+
+## Test Results (2026-07-29)
+
+| Validation | Result |
+|------------|--------|
+| MinGW-w64 clean build (2026-07-29) | PASS — `PowerEditor/gcc/bin.gcc.x86_64/nodeplus-code.exe` |
+| `IDM_VIEW_OPEN_TERMINAL_PS` launches PowerShell | PASS — verified in-app after Bug 11 fix |
+| `IDM_VIEW_OPEN_TERMINAL_CMD` still opens cmd.exe | PASS — unaffected by fix |
+| Blank-terminal regression (Bug 12) | PASS — standalone ConPTY test alive; in-app prompt `PS C:\...>` confirmed |
 
 ## Test Results (2026-07-28)
 

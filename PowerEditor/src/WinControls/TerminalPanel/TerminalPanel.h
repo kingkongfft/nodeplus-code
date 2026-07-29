@@ -104,6 +104,7 @@ private:
 
 	// Reader thread
 	void readerThreadProc();
+	void watchProcessExit();
 	void processOutput(const char* data, DWORD len);
 	void appendText(const std::wstring& text, COLORREF fg, COLORREF bg);
 	void handleANSIEscape();
@@ -127,17 +128,23 @@ private:
 	void resetANSIParser();
 	void applySGR(int param);
 	void processSGR();
+	void handleOSC();
 	void putChar(wchar_t wc);
 	void newLine();
 	void ensureRow(size_t row);
+	void enterAltScreen();
+	void leaveAltScreen();
 
 	// ConPTY handles
 	HPCON _hPC = nullptr;
 	HANDLE _ptyInput = nullptr;   // write to this -> goes to process stdin
 	HANDLE _ptyOutput = nullptr;  // read from this -> process stdout
+	HANDLE _ptyInputReadSide = nullptr;   // close after hosted process starts
+	HANDLE _ptyOutputWriteSide = nullptr; // close after hosted process starts
 	HANDLE _hProcess = nullptr;
 	HANDLE _hThread = nullptr;
 	std::thread _readerThread;
+	std::thread _watchThread;
 	std::atomic<bool> _running{false};
 	std::mutex _inputMutex;
 
@@ -154,6 +161,11 @@ private:
 	SHORT _cols = 80;
 	SHORT _rows = 24;
 
+	// Debounced PTY resize (see IDT_TERM_RESIZE in the .cpp)
+	bool _resizePending = false;
+	SHORT _pendingCols = 80;
+	SHORT _pendingRows = 24;
+
 	// Text buffer
 	struct Cell {
 		wchar_t ch;
@@ -168,6 +180,17 @@ private:
 	size_t _scrollTop = 0;    // first visible line index
 	size_t _maxLines = 10000;     // max buffer lines
 	bool _autoScroll = true;  // stick to bottom unless user scrolled up
+
+	// Alternate screen buffer (DECSET/DECRST 1049/47/1047) — used by
+	// full-screen TUI apps (vim, less, opencode/opentui, htop, etc.) so
+	// their frame redraws don't get interleaved into the normal scrollback
+	// and the original screen can be restored on exit.
+	bool _inAltScreen = false;
+	std::deque<Line> _savedBuffer;
+	size_t _savedScrollTop = 0;
+	size_t _savedScreenTop = 0;
+	size_t _savedCursorRow = 0;
+	int _savedCursorCol = 0;
 
 	// Cursor
 	int _cursorCol = 0;
@@ -190,6 +213,7 @@ private:
 	std::string _ansiParams;
 	char _ansiFinalByte = 0;
 	bool _ansiQuestionMark = false;
+	char _ansiPrefixChar = 0;    // '?', '>', '<', '=' — distinguishes DA1 (bare CSI c) from DA2 (CSI > c) etc.
 	bool _ansiOscEsc = false;
 
 	// UTF-8 incremental decoder (multi-byte sequences may span ReadFile chunks)

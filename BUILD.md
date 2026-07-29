@@ -8,13 +8,13 @@
 
 There are three components which are built from one visual studio solution:
 
-- `notepad++.exe`: (contains `libSciLexer.lib`)
+- `nodeplus-code.exe`: (contains `libSciLexer.lib`)
 - `libScintilla.lib` : static library based on [Scintilla](https://www.scintilla.org/)
 - `libLexilla.lib` : static library based on [Lexilla](https://www.scintilla.org/Lexilla.html)
 
 Notepad++ is always built **with** Boost regex PCRE support instead of default c++11 regex ECMAScript used by plain Scintilla.
 
-### Build `notepad++.exe`
+### Build `nodeplus-code.exe`
 
  1. Open [`PowerEditor\visual.net\notepadPlus.sln`](https://github.com/notepad-plus-plus/notepad-plus-plus/blob/master/PowerEditor/visual.net/notepadPlus.sln)
  2. Select a solution configuration (Debug or Release) and a solution platform (x64 or Win32 or ARM64)
@@ -61,11 +61,11 @@ Building Notepad++ is regularly tested on a Windows system by using [MSYS2](http
 1. Launch `cmd` and add `$MinGW-root$\bin` to `PATH` if necessary.
 2. `cd` into `notepad-plus-plus\PowerEditor\gcc`.
 3. Run `mingw32-make`.
-4. The 32-bit or 64-bit `notepad++.exe` will be generated either in `bin.i686` or in `bin.x86_64` directory respectively, depending on the target CPU of the compiler — look for the full path to the resulting binary at the end of the build process.
+4. The 32-bit or 64-bit `nodeplus-code.exe` will be generated either in `bin.i686` or in `bin.x86_64` directory respectively, depending on the target CPU of the compiler — look for the full path to the resulting binary at the end of the build process.
 
 #### Some additional information
 
-- The directory containing `notepad++.exe` will also contain everything needed for Notepad++ to start.
+- The directory containing `nodeplus-code.exe` will also contain everything needed for Notepad++ to start.
 - To have a debug build just add `DEBUG=1` to the `mingw32-make` invocation above. The output directory then will be suffixed with `-debug`.
 - To see commands being executed add `VERBOSE=1` to the same command.
 - When a project is built outside of the `PowerEditor/gcc` directory, for example when using `-f` option, then the entire project path must not contain any spaces. Additionally, the path to `makefile` of this project should be listed as first.

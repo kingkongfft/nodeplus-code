@@ -159,6 +159,8 @@ PowerEditor/bin/SourceCodePro-Regular.ttf
 # MinGW-w64 GCC
 
 bin.*
+dist/
+NUL
 scintilla/win32/*.o
 .build_temp/
 

@@ -102,6 +102,7 @@ private :
 	IconList _docTabIconList;
 	IconList _docTabIconListAlt;
 	IconList _docTabIconListDarkMode;
+	int _terminalIconIndex = 5;
 
 	std::vector<IconList *> _pIconListVector;
 	int _iconListIndexChoice = -1;

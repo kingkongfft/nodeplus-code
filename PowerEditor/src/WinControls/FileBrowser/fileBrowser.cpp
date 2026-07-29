@@ -409,6 +409,7 @@ void FileBrowser::initPopupMenus()
 	wstring findInFile = pNativeSpeaker->getDlgLangMenuStr(FOLDERASWORKSPACE_NODE, nullptr, IDM_FILEBROWSER_FINDINFILES, FB_FINDINFILES);
 	wstring explorerHere = pNativeSpeaker->getDlgLangMenuStr(FOLDERASWORKSPACE_NODE, nullptr, IDM_FILEBROWSER_EXPLORERHERE, FB_EXPLORERHERE);
 	wstring powershellHere = pNativeSpeaker->getDlgLangMenuStr(FOLDERASWORKSPACE_NODE, nullptr, IDM_FILEBROWSER_POWERSHELLHERE, FB_POWERSHELLHERE);
+	wstring windowsTerminalHere = pNativeSpeaker->getDlgLangMenuStr(FOLDERASWORKSPACE_NODE, nullptr, IDM_FILEBROWSER_WINDOWSTERMINALHERE, FB_WINDOWSTERMINALHERE);
 	wstring openInNpp = pNativeSpeaker->getDlgLangMenuStr(FOLDERASWORKSPACE_NODE, nullptr, IDM_FILEBROWSER_OPENINNPP, FB_OPENINNPP);
 	wstring shellExecute = pNativeSpeaker->getDlgLangMenuStr(FOLDERASWORKSPACE_NODE, nullptr, IDM_FILEBROWSER_SHELLEXECUTE, FB_SHELLEXECUTE);
 
@@ -424,6 +425,7 @@ void FileBrowser::initPopupMenus()
 	::InsertMenu(_hRootMenu, 0, MF_BYCOMMAND, static_cast<UINT>(-1), 0);
 	::InsertMenu(_hRootMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_EXPLORERHERE, explorerHere.c_str());
 	::InsertMenu(_hRootMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_POWERSHELLHERE, powershellHere.c_str());
+	::InsertMenu(_hRootMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_WINDOWSTERMINALHERE, windowsTerminalHere.c_str());
 
 	_hFolderMenu = ::CreatePopupMenu();
 	::InsertMenu(_hFolderMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_COPYPATH, copyPath.c_str());
@@ -431,6 +433,7 @@ void FileBrowser::initPopupMenus()
 	::InsertMenu(_hFolderMenu, 0, MF_BYCOMMAND, static_cast<UINT>(-1), 0);
 	::InsertMenu(_hFolderMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_EXPLORERHERE, explorerHere.c_str());
 	::InsertMenu(_hFolderMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_POWERSHELLHERE, powershellHere.c_str());
+	::InsertMenu(_hFolderMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_WINDOWSTERMINALHERE, windowsTerminalHere.c_str());
 
 	_hFileMenu = ::CreatePopupMenu();
 	::InsertMenu(_hFileMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_OPENINNPP, openInNpp.c_str());
@@ -441,6 +444,7 @@ void FileBrowser::initPopupMenus()
 	::InsertMenu(_hFileMenu, 0, MF_BYCOMMAND, static_cast<UINT>(-1), 0);
 	::InsertMenu(_hFileMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_EXPLORERHERE, explorerHere.c_str());
 	::InsertMenu(_hFileMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_POWERSHELLHERE, powershellHere.c_str());
+	::InsertMenu(_hFileMenu, 0, MF_BYCOMMAND, IDM_FILEBROWSER_WINDOWSTERMINALHERE, windowsTerminalHere.c_str());
 }
 
 bool FileBrowser::selectItemFromPath(const wstring& itemPath) const
@@ -876,6 +880,22 @@ void FileBrowser::popupMenuCmd(int cmdID)
 			{
 				::SendMessage(_hParent, WM_COMMAND, IDM_VIEW_OPEN_TERMINAL_PS,
 					reinterpret_cast<LPARAM>(path.c_str()));
+			}
+		}
+		break;
+
+		case IDM_FILEBROWSER_WINDOWSTERMINALHERE:
+		{
+			if (!selectedNode) return;
+
+			if (getNodeType(selectedNode) == browserNodeType_file)
+				selectedNode = _treeView.getParent(selectedNode);
+
+			wstring path = getNodePath(selectedNode);
+			if (doesPathExist(path.c_str()))
+			{
+				wstring parameters = L"-d \"" + path + L"\" powershell.exe";
+				::ShellExecuteW(_hParent, L"open", L"wt.exe", parameters.c_str(), nullptr, SW_SHOWNORMAL);
 			}
 		}
 		break;

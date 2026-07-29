@@ -37,7 +37,8 @@ constexpr LPARAM terminalTabMarker = 1;
 void DocTabView::addTerminal(TerminalPanel* terminal, const wchar_t* title)
 {
 	TCITEM item{};
-	item.mask = TCIF_TEXT | TCIF_PARAM;
+	item.mask = TCIF_TEXT | TCIF_IMAGE | TCIF_PARAM;
+	item.iImage = _terminalIconIndex;
 	item.pszText = const_cast<wchar_t*>(title);
 	item.lParam = reinterpret_cast<LPARAM>(terminal) | terminalTabMarker;
 	::SendMessage(_hSelf, TCM_INSERTITEM, _nbItem++, reinterpret_cast<LPARAM>(&item));
@@ -109,6 +110,10 @@ void DocTabView::createIconSets()
 	_docTabIconList.create(iconDpiDynamicalSize, _hInst, docTabIconIDs, sizeof(docTabIconIDs) / sizeof(int));
 	_docTabIconListAlt.create(iconDpiDynamicalSize, _hInst, docTabIconIDs_alt, sizeof(docTabIconIDs_alt) / sizeof(int));
 	_docTabIconListDarkMode.create(iconDpiDynamicalSize, _hInst, docTabIconIDs_darkMode, sizeof(docTabIconIDs_darkMode) / sizeof(int));
+	_docTabIconList.addIcon(IDI_TERMINAL_ICON, iconDpiDynamicalSize, iconDpiDynamicalSize);
+	_docTabIconListAlt.addIcon(IDI_TERMINAL_ICON, iconDpiDynamicalSize, iconDpiDynamicalSize);
+	_docTabIconListDarkMode.addIcon(IDI_TERMINAL_DM_ICON, iconDpiDynamicalSize, iconDpiDynamicalSize);
+	_terminalIconIndex = static_cast<int>(std::size(docTabIconIDs));
 }
 
 void DocTabView::addBuffer(BufferID buffer)

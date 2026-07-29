@@ -10,6 +10,10 @@
 
 The default docked Terminal panel height is now initialized to approximately one tenth of the main client height, with an 80-pixel minimum. This keeps the startup panel compact while preserving enough space for terminal interaction.
 
+Workspace context menus now also provide `Windows Terminal here`. This action launches the external `wt.exe` client with the selected workspace path and starts `powershell.exe`, while `PowerShell here` continues to use the embedded terminal tab.
+
+PowerShell terminal document tabs now use a dedicated terminal icon in the shared tab bar. Light and dark ICO resources are registered separately, and ordinary file-tab icons remain unchanged.
+
 ---
 
 ## Summary
@@ -225,6 +229,8 @@ termKbHookProc(nCode, wParam, lParam):
 - Manual UI verification is still required for tab switching, closing, focus handling, and restoring ordinary document tabs.
 - Known UI defect: the embedded terminal content can overlap the bottom edge of the shared document-tab header. This is deferred for a later layout pass.
 - Default docked Terminal panel height is compacted to approximately 10% of the client area, with a minimum height of 80 pixels.
+- `Windows Terminal here` is available on workspace root, folder, and file context menus and launches an external Windows Terminal at the selected directory.
+- PowerShell terminal tabs display a dedicated light/dark terminal icon to distinguish them from file tabs.
 
 ### Bug 11: Terminal PowerShell menu opens CMD instead of PowerShell 🔴->🟢
 

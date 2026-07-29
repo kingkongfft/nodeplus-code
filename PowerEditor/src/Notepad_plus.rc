@@ -66,6 +66,8 @@ IDI_CHAMELEON_DM                ICON      "icons/dark/about/chameleon.ico"
 //IDI_TAIWANSSOVEREIGNTY_DM     ICON      "icons/dark/about/logo_taiwan-grey.ico"
 //IDI_WITHUKRAINE               ICON      "icons/standard/about/withUkraine.ico"
 IDI_ICONABSENT                  ICON      "icons/iconAbsent.ico"
+IDI_TERMINAL_ICON               ICON      "icons/light/toolbar/regular/terminal_off.ico"
+IDI_TERMINAL_DM_ICON            ICON      "icons/dark/toolbar/regular/terminal_off.ico"
 
 //
 // TOOLBAR ICO - set 1

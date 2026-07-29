@@ -8,6 +8,8 @@
 
 **Current result**: Functional but not production-ready. Workspace PowerShell opens in the main document tab area and file/terminal switching works, but the terminal content has a persistent top-edge overlap with the document tab header. Further layout cleanup is deferred.
 
+**Portable release**: `v0.1.0` was built successfully with `./build-local.sh` and published to GitHub as a MinGW-w64 x86_64 portable ZIP: <https://github.com/kingkongfft/nodeplus-code/releases/tag/v0.1.0>. The release asset is `nodeplus-code-portable.zip` and contains the executable plus the required configuration, language definitions, themes, and plugins.
+
 The default docked Terminal panel height is now initialized to approximately one tenth of the main client height, with an 80-pixel minimum. This keeps the startup panel compact while preserving enough space for terminal interaction.
 
 Workspace context menus now also provide `Windows Terminal here`. This action launches the external `wt.exe` client with the selected workspace path and starts `powershell.exe`, while `PowerShell here` continues to use the embedded terminal tab.
@@ -101,8 +103,8 @@ Menu Bar -> Terminal (top-level POPUP, MENUINDEX_TERMINAL=4)
 |-----------|------|
 | g++ | `C:\msys64\mingw64\bin\g++.exe` (16.1.0) |
 | mingw32-make | `C:\msys64\mingw64\bin\mingw32-make.exe` |
-| Build cmd | `cd PowerEditor/gcc && mingw32-make -j$(nproc)` (two-step: run `NppLibsVersionH-generator.bat` first) |
-| Output | `PowerEditor/gcc/bin.gcc.x86_64/notepad++.exe` (~12.8 MB) |
+| Build cmd | `./build-local.sh` (supports `--clean` and `--debug`) |
+| Output | `PowerEditor/gcc/bin.gcc.x86_64/nodeplus-code.exe` (~12.8 MB) |
 | Note | Paths with spaces (e.g., `OneDrive - EPAM`) require pre-running `NppLibsVersionH-generator.bat` via `cmd`, then building from `PowerEditor/gcc/` using relative paths. See `BUILD_GUIDE.md`. |
 
 ---

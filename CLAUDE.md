@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **⚠️ 先看 AGENTS.md**：高优先级规则（隐私保护、凭证安全、开发规范）在 `AGENTS.md` 中，请优先遵守。
+
 ## Project Overview
 
 Notepad++ is a free, open-source source code editor and Notepad replacement for Windows, written in C++20 using pure Win32 API. It uses Scintilla for text editing and Lexilla for syntax highlighting/lexing.
@@ -15,6 +17,7 @@ Notepad++ is a free, open-source source code editor and Notepad replacement for 
 - Build: Open solution in VS or use `msbuild PowerEditor/visual.net/notepadPlus.sln /m /p:configuration=Release /p:platform=x64`
 
 ### GCC/MinGW-w64
+- **快捷构建**：运行根目录的 `build-local.sh`（会自动清理、生成版本头、调用 mingw32-make）
 - Makefile: `PowerEditor/gcc/makefile`
 - Requires: MSYS2 with MinGW-w64 GCC
 - Build: `cd PowerEditor/gcc && mingw32-make` (add `DEBUG=1` for debug, `VERBOSE=1` for verbose)

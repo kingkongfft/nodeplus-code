@@ -160,6 +160,7 @@ PowerEditor/bin/SourceCodePro-Regular.ttf
 
 bin.*
 scintilla/win32/*.o
+.build_temp/
 
 
 PowerEditor/src/MISC/md5/RCa06792

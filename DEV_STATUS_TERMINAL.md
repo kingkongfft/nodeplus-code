@@ -8,7 +8,7 @@
 
 **Current result**: Functional but not production-ready. Workspace PowerShell opens in the main document tab area and file/terminal switching works. The file-tab crash that occurred while PowerShell tabs were open is fixed; terminal content still has a persistent top-edge overlap with the document tab header. Further layout cleanup is deferred.
 
-**Portable release**: `v0.1.0` was built successfully with `./build-local.sh` and published to GitHub as a MinGW-w64 x86_64 portable ZIP: <https://github.com/kingkongfft/nodeplus-code/releases/tag/v0.1.0>. The release asset is `nodeplus-code-portable.zip` and contains the executable plus the required configuration, language definitions, themes, and plugins.
+**Portable release**: `v0.2.0` was built successfully with `./build-local.sh` and published to GitHub as a MinGW-w64 x86_64 portable ZIP: <https://github.com/kingkongfft/nodeplus-code/releases/tag/v0.2.0>. The release asset is `nodeplus-code-portable-v0.2.0.zip` and contains the executable plus portable configuration, language definitions, themes, and plugins.
 
 The default docked Terminal panel height is now initialized to approximately one tenth of the main client height, with an 80-pixel minimum. This keeps the startup panel compact while preserving enough space for terminal interaction.
 
@@ -339,6 +339,7 @@ Full write-up: `PowerEditor/src/WinControls/TerminalPanel/BUGFIX_FILE_TAB_CLOSE_
 | `IDM_VIEW_OPEN_TERMINAL_CMD` still opens cmd.exe | PASS — unaffected by fix |
 | Blank-terminal regression (Bug 12) | PASS — standalone ConPTY test alive; in-app prompt `PS C:\...>` confirmed |
 | File-tab close with PowerShell tabs (Bug 13) | PASS — reproduced with multiple terminal/file tabs, then verified fixed after rebuild |
+| NodePlus-CODE v0.2.0 release build | PASS — portable ZIP uploaded to GitHub release `v0.2.0` |
 
 ## Test Results (2026-07-28)
 

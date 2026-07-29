@@ -109,3 +109,58 @@ until `CreateProcessW` completes and are closed during `terminate()`.
 ```
 
    The PowerShell prompt appeared. The terminal panel is no longer blank.
+
+---
+
+## Follow-up: OpenCode/OpenTUI Compatibility
+
+### Symptom
+
+PowerShell itself worked in the embedded terminal, but running `opencode` produced a blank or
+unusable full-screen interface. External PowerShell execution was healthy:
+
+```text
+opencode --version
+1.18.7
+```
+
+The diagnostic log showed OpenCode launching successfully and emitting its TUI frame. The issue
+was therefore terminal emulation, not PowerShell discovery or `PATH` resolution.
+
+### Root Cause
+
+OpenCode uses OpenTUI and emits terminal protocols beyond the basic PowerShell prompt, including:
+
+- alternate-screen and full-screen redraw sequences;
+- synchronized-output and private SGR sequences;
+- Kitty keyboard protocol queries;
+- cursor save/restore sequences;
+- OSC capability and color queries.
+
+The terminal parser treated every CSI private prefix as `?`, so `CSI > ...` sequences were handled
+as DEC private modes. It also interpreted private SGR capability commands as ordinary colors and
+did not implement cursor save/restore.
+
+### Fix
+
+`TerminalPanel.cpp` and `TerminalPanel.h` now:
+
+1. Distinguish `CSI ?` from `CSI >`, `<`, and `=` prefixes.
+2. Ignore private SGR capability commands instead of applying them as text attributes.
+3. Implement `CSI s` cursor save and `CSI u` cursor restore.
+4. Accept Kitty keyboard protocol commands as no-ops while retaining legacy input support.
+5. Reset saved cursor state when a new shell starts.
+
+The relevant implementation is in `TerminalPanel::processOutput()` and
+`TerminalPanel::handleANSIEscape()`.
+
+### Validation
+
+- PowerShell, `cmd.exe`, Git Bash, and ConPTY standalone tests pass.
+- `git diff --check` passes.
+- The full rebuild was attempted but is currently blocked by the local MinGW installation:
+  `cc1plus.exe` is missing from `/c/msys64/mingw64/libexec/gcc/...`.
+
+After repairing MinGW, rebuild the application and verify `opencode` in the embedded Terminal
+panel. The expected behavior is that OpenCode starts its interactive UI rather than leaving a
+blank screen.

@@ -191,6 +191,9 @@ private:
 	size_t _savedScreenTop = 0;
 	size_t _savedCursorRow = 0;
 	int _savedCursorCol = 0;
+	size_t _decSavedCursorRow = 0;
+	int _decSavedCursorCol = 0;
+	bool _decCursorSaved = false;
 
 	// Cursor
 	int _cursorCol = 0;
@@ -214,6 +217,7 @@ private:
 	char _ansiFinalByte = 0;
 	bool _ansiQuestionMark = false;
 	char _ansiPrefixChar = 0;    // '?', '>', '<', '=' — distinguishes DA1 (bare CSI c) from DA2 (CSI > c) etc.
+	bool _ansiDollarIntermediate = false;
 	bool _ansiOscEsc = false;
 
 	// UTF-8 incremental decoder (multi-byte sequences may span ReadFile chunks)
@@ -223,6 +227,7 @@ private:
 	// Terminal modes
 	std::atomic<bool> _bracketedPaste{false};   // DECSET 2004 — shells like PSReadLine enable this
 	std::atomic<bool> _appCursorKeys{false};    // DECCKM — SS3 vs CSI arrow keys
+	std::atomic<bool> _focusReporting{false};  // DECSET 1004 — focus events for TUI apps
 
 	// SGR state
 	COLORREF _currentFg = RGB(192, 192, 192);  // white

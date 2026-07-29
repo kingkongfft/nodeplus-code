@@ -166,3 +166,12 @@ Upstream coding style is defined in `CONTRIBUTING.md`. Key rules follow.
 3. Confirm the build succeeds locally (`./build-local.sh` or MSBuild).
 4. Keep PRs to a single feature or bug fix; do not reformat unrelated code.
 5. Attach every PR to a GitHub issue; new enhancements need an `Accepted` label before merging.
+
+## OpenCode Terminal Guidance
+
+- Use the external Windows Terminal option (`IDM_VIEW_OPEN_TERMINAL_WT`) to run OpenCode.
+- Do not rely on the embedded Terminal panel for OpenCode or other advanced full-screen TUIs.
+- The embedded panel uses a partial hand-written VT parser and is suitable for basic shell commands,
+  but it does not yet provide complete OpenTUI-compatible terminal emulation.
+- OpenCode support in the embedded panel requires a future mature VT parser and terminal screen
+  model; adding individual escape-sequence replies is not considered a complete fix.

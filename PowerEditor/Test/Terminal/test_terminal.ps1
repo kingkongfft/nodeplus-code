@@ -10,6 +10,24 @@ $TestDir  = "$ScriptDir"
 $ReportFile = "$TestDir\test_report.txt"
 $Results = [System.Collections.ArrayList]::new()
 
+function Test-OpenCodeProtocol($LogPath) {
+    if (!(Test-Path $LogPath)) { Test-Result "OpenCode protocol log" $false "Log not found"; return }
+    $text = Get-Content $LogPath -Raw
+    $checks = @(
+        @{ N="OpenTUI OSC 99 query"; P="opentui-notifications" },
+        @{ N="OSC 99 reply"; P="handleOSC: replying to OpenTUI OSC 99 capability query" },
+        @{ N="TX capability reply"; P="TX\[.*\\e\]99;" },
+        @{ N="iTerm capability reply"; P="handleOSC: replying to iTerm capability query" },
+        @{ N="Cursor position reply"; P="handleANSI: answering DSR 6" },
+        @{ N="XTVERSION reply"; P="handleANSI: answering XTVERSION" },
+        @{ N="OpenTUI alternate screen"; P="\\e\[\?1049h" },
+        @{ N="OpenTUI sync output"; P="\\e\[\?2026h" }
+    )
+    foreach ($check in $checks) {
+        Test-Result $check.N ($text -match $check.P)
+    }
+}
+
 function Write-Header($T) {
     $l = "=" * 70
     "$l`n  $T`n$l" | Tee-Object -Append $ReportFile | Write-Host -ForegroundColor Cyan
@@ -187,6 +205,7 @@ function Run-CPP($Name, $Exe, $Src) {
 
 Run-CPP "ConPTY + PS output" "$TestDir\conpty_ps_test.exe" "$TestDir\conpty_ps_test.cpp"
 Run-CPP "ConPTY + PS keyboard" "$TestDir\conpty_kb_ps_test.exe" "$TestDir\conpty_kb_ps_test.cpp"
+Test-OpenCodeProtocol "$RepoRoot\PowerEditor\gcc\bin.gcc.x86_64\npp_terminal_debug.log"
 
 # ===== SECTION 7 =====
 Write-Header "7. Build"

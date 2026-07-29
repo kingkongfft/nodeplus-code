@@ -481,6 +481,7 @@ void TerminalPanel::launchShell(const std::wstring& shellPath, const std::wstrin
 		_cursorRow = 0;
 		_screenTop = 0;
 		_scrollTop = 0;
+		_decCursorSaved = false;
 		_autoScroll = true;
 		ensureRow(0);
 	}
@@ -760,6 +761,7 @@ void TerminalPanel::processOutput(const char* data, DWORD len)
 				_ansiState = TS_ESCAPE;
 				_ansiParams.clear();
 				_ansiQuestionMark = false;
+				_ansiDollarIntermediate = false;
 			}
 			else if (c == '\r')
 			{
@@ -849,8 +851,12 @@ void TerminalPanel::processOutput(const char* data, DWORD len)
 			}
 			else if (c == '?' || c == '>' || c == '<' || c == '=')
 			{
-				_ansiQuestionMark = true;
+				_ansiQuestionMark = (c == '?');
 				_ansiPrefixChar = static_cast<char>(c);
+			}
+			else if (c == '$')
+			{
+				_ansiDollarIntermediate = true;
 			}
 			else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '@' || c == '`')
 			{
@@ -858,6 +864,7 @@ void TerminalPanel::processOutput(const char* data, DWORD len)
 				handleANSIEscape();
 				_ansiState = TS_NORMAL;
 				_ansiPrefixChar = 0;
+				_ansiDollarIntermediate = false;
 			}
 			// else ignore intermediate bytes
 			break;
@@ -954,7 +961,10 @@ void TerminalPanel::handleANSIEscape()
 	switch (cmd)
 	{
 	case 'm': // SGR - Select Graphic Rendition
-		processSGR();
+		// Private SGR modes, such as CSI > 4 ; 1 m from opentui, are
+		// capability commands rather than text attributes.
+		if (!_ansiPrefixChar)
+			processSGR();
 		break;
 
 	case 'A': // Cursor Up
@@ -1134,6 +1144,7 @@ void TerminalPanel::handleANSIEscape()
 			{
 				if (prm == 25)        _cursorVisible = true;
 				else if (prm == 2004) _bracketedPaste = true;   // enable bracketed paste
+				else if (prm == 1004) _focusReporting = true;
 				else if (prm == 1)    _appCursorKeys = true;    // DECCKM
 				else if (prm == 1049 || prm == 47 || prm == 1047)
 					enterAltScreen();   // full-screen TUI apps (vim, opencode, htop, ...)
@@ -1148,6 +1159,7 @@ void TerminalPanel::handleANSIEscape()
 			{
 				if (prm == 25)        _cursorVisible = false;
 				else if (prm == 2004) _bracketedPaste = false;
+				else if (prm == 1004) _focusReporting = false;
 				else if (prm == 1)    _appCursorKeys = false;
 				else if (prm == 1049 || prm == 47 || prm == 1047)
 					leaveAltScreen();
@@ -1156,12 +1168,41 @@ void TerminalPanel::handleANSIEscape()
 		break;
 
 	case 'n': // DSR - Device Status Report
-		if (!_ansiQuestionMark && params[0] == 6)
+		if (!_ansiQuestionMark && !params.empty() && (params[0] == 5 || params[0] == 6))
 		{
-			// Report the cursor position — some shells block waiting for this.
-			int row = static_cast<int>(_cursorRow >= _screenTop ? _cursorRow - _screenTop : 0) + 1;
-			sendTextToTerminal("\x1b[" + std::to_string(row) + ";" +
-				std::to_string(_cursorCol + 1) + "R");
+			if (params[0] == 5)
+			{
+				// DSR status request: report that the terminal is operational.
+				TERM_LOG(L"handleANSI: answering DSR 5");
+				sendTextToTerminal("\x1b[0n");
+			}
+			else
+			{
+				// DSR cursor position request. OpenTUI uses this during startup
+				// before and after switching to the alternate screen.
+				int row = static_cast<int>(_cursorRow >= _screenTop ? _cursorRow - _screenTop : 0) + 1;
+				int col = _cursorCol + 1;
+				TERM_LOG(L"handleANSI: answering DSR 6 row=%d col=%d", row, col);
+				sendTextToTerminal("\x1b[" + std::to_string(row) + ";" +
+					std::to_string(col) + "R");
+			}
+		}
+		break;
+
+	case 'p': // DECRQM - request DEC private mode report
+		if (_ansiQuestionMark && _ansiDollarIntermediate)
+		{
+			TERM_LOG(L"handleANSI: DECRQM params='%hs'", _ansiParams.c_str());
+			// OpenTUI probes private modes with CSI ? Pm $ p. Report the modes
+			// this panel supports using the corresponding DECRPM response.
+			for (int prm : params)
+			{
+				const bool supported = prm == 25 || prm == 1000 || prm == 1002 ||
+					prm == 1003 || prm == 1004 || prm == 1006 || prm == 1049 ||
+					prm == 2004 || prm == 2026 || prm == 2027;
+				sendTextToTerminal("\x1b[?" + std::to_string(prm) + ";" +
+					(supported ? "2" : "0") + "$y");
+			}
 		}
 		break;
 
@@ -1190,6 +1231,37 @@ void TerminalPanel::handleANSIEscape()
 			// opencode/opentui) stop blocking and fall back to legacy input.
 			sendTextToTerminal("\x1b[?0u");
 		}
+		else if (!_ansiQuestionMark && !_ansiPrefixChar && _decCursorSaved)
+		{
+			// DECRC: restore the cursor saved by CSI s.
+			_cursorRow = _decSavedCursorRow;
+			_cursorCol = _decSavedCursorCol;
+			ensureRow(_cursorRow);
+		}
+		else if (_ansiPrefixChar == '>')
+		{
+			// Accept Kitty keyboard protocol commands as a no-op. Input remains
+			// in the legacy mode supported by this terminal panel.
+		}
+		break;
+
+	case 's': // DECSC - save cursor position
+		_decSavedCursorRow = _cursorRow;
+		_decSavedCursorCol = _cursorCol;
+		_decCursorSaved = true;
+		break;
+
+	case 'q': // DECSCUSR or XTVERSION (CSI > q)
+		if (_ansiPrefixChar == '>')
+		{
+			// OpenTUI uses XTVERSION during startup to identify the terminal
+			// path. Return a valid DCS response so capability negotiation can
+			// finish instead of waiting for the timeout.
+			TERM_LOG(L"handleANSI: answering XTVERSION");
+			sendTextToTerminal("\x1bP>|NodePlus Terminal 1.0\x1b\\");
+		}
+		// DECSCUSR cursor style is intentionally rendered using one native
+		// cursor style.
 		break;
 
 	case 't': // XTWINOPS - window/report queries
@@ -1305,7 +1377,23 @@ void TerminalPanel::handleOSC()
 	int code = 0;
 	try { code = std::stoi(codeStr); } catch (...) { return; }
 
-	if (code == 4)
+	if (code == 99 && rest.find("i=opentui-notifications") != std::string::npos &&
+		rest.find("p=?") != std::string::npos)
+	{
+		// OpenTUI probes OSC 99 before enabling its notification capability.
+		// Answer the probe so its startup capability detection can complete.
+		TERM_LOG(L"handleOSC: replying to OpenTUI OSC 99 capability query");
+		sendTextToTerminal("\x1b]99;i=opentui-notifications:p=?;p=title,body:o=always\x1b\\");
+	}
+	else if (code == 1337 && rest == "Capabilities")
+	{
+		// OpenTUI sends the iTerm2 capability query as part of startup. A
+		// response is required for its capability-response parser to finish;
+		// an empty feature list accurately advertises no iTerm extensions.
+		TERM_LOG(L"handleOSC: replying to iTerm capability query");
+		sendTextToTerminal("\x1b]1337;Capabilities=\x1b\\");
+	}
+	else if (code == 4)
 	{
 		// OSC 4 ; <index> ; ? — query palette color at <index>.
 		// Reply: OSC 4 ; <index> ; rgb:RRRR/GGGG/BBBB BEL
@@ -1640,6 +1728,24 @@ void TerminalPanel::sendBreakToProcess()
 void TerminalPanel::sendTextToTerminal(const std::string& text)
 {
 	if (!_running || text.empty()) return;
+	if (termLogEnabled() && text.find('\x1b') != std::string::npos)
+	{
+		std::wstring dump;
+		dump.reserve(text.size() * 2);
+		for (unsigned char c : text)
+		{
+			if (c == 0x1B) dump += L"\\e";
+			else if (c == '\\') dump += L"\\\\";
+			else if (c >= 0x20 && c < 0x7F) dump += static_cast<wchar_t>(c);
+			else
+			{
+				wchar_t hex[8] = {};
+				_snwprintf(hex, 8, L"\\x%02X", c);
+				dump += hex;
+			}
+		}
+		TERM_LOG(L"TX[%lu]: %ls", static_cast<unsigned long>(text.size()), dump.c_str());
+	}
 	std::lock_guard<std::mutex> inputLock(_inputMutex);
 	if (!_running || !_ptyInput) return;
 
@@ -2000,12 +2106,22 @@ LRESULT TerminalPanel::runTermProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
 		::ShowCaret(hwnd);
 		// Install keyboard hook only when terminal has focus
 		installKbHook();
+		if (_focusReporting && _running)
+		{
+			TERM_LOG(L"focus: sending focus-in event");
+			sendTextToTerminal("\x1b[I");
+		}
 		return 0;
 
 	case WM_KILLFOCUS:
 		::DestroyCaret();
 		// Remove keyboard hook so editor can receive keystrokes normally
 		uninstallKbHook();
+		if (_focusReporting && _running)
+		{
+			TERM_LOG(L"focus: sending focus-out event");
+			sendTextToTerminal("\x1b[O");
+		}
 		return 0;
 
 	case WM_LBUTTONDOWN:

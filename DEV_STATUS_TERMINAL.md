@@ -8,6 +8,8 @@
 
 **Current result**: Functional but not production-ready. Workspace PowerShell opens in the main document tab area and file/terminal switching works, but the terminal content has a persistent top-edge overlap with the document tab header. Further layout cleanup is deferred.
 
+The default docked Terminal panel height is now initialized to approximately one tenth of the main client height, with an 80-pixel minimum. This keeps the startup panel compact while preserving enough space for terminal interaction.
+
 ---
 
 ## Summary
@@ -222,6 +224,7 @@ termKbHookProc(nCode, wParam, lParam):
 - The bottom `Terminal -> PowerShell` command remains on the existing docked-panel path.
 - Manual UI verification is still required for tab switching, closing, focus handling, and restoring ordinary document tabs.
 - Known UI defect: the embedded terminal content can overlap the bottom edge of the shared document-tab header. This is deferred for a later layout pass.
+- Default docked Terminal panel height is compacted to approximately 10% of the client area, with a minimum height of 80 pixels.
 
 ### Bug 11: Terminal PowerShell menu opens CMD instead of PowerShell 🔴->🟢
 

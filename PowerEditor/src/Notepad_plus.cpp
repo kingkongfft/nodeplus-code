@@ -7728,6 +7728,9 @@ void Notepad_plus::launchTerminal(const std::wstring& shellCmd, const std::wstri
 			data.pszName = title;
 		}
 		::SendMessage(_pPublicInterface->getHSelf(), NPPM_DMMREGASDCKDLG, 0, reinterpret_cast<LPARAM>(&data));
+		RECT clientRect{};
+		::GetClientRect(_pPublicInterface->getHSelf(), &clientRect);
+		_dockingManager.setDockedContSize(CONT_BOTTOM, std::max<LONG>(80, (clientRect.bottom - clientRect.top) / 10));
 		_pTerminalPanel->display();
 	}
 

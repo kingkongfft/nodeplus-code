@@ -14,6 +14,8 @@ Workspace context menus now also provide `Windows Terminal here`. This action la
 
 PowerShell terminal document tabs now use a dedicated terminal icon in the shared tab bar. Light and dark ICO resources are registered separately, and ordinary file-tab icons remain unchanged.
 
+The application window identity and version metadata now use `NodePlus-CODE` instead of `Notepad++`. This includes the window class/title source and the executable file description/product name.
+
 ---
 
 ## Summary
@@ -231,6 +233,7 @@ termKbHookProc(nCode, wParam, lParam):
 - Default docked Terminal panel height is compacted to approximately 10% of the client area, with a minimum height of 80 pixels.
 - `Windows Terminal here` is available on workspace root, folder, and file context menus and launches an external Windows Terminal at the selected directory.
 - PowerShell terminal tabs display a dedicated light/dark terminal icon to distinguish them from file tabs.
+- The application title and version metadata identify the product as `NodePlus-CODE`.
 
 ### Bug 11: Terminal PowerShell menu opens CMD instead of PowerShell 🔴->🟢
 

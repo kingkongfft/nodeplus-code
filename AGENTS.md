@@ -10,11 +10,11 @@
 
 ---
 
-# Notepad++ Agent Rules
+# NodePlus-CODE Agent Rules
 
 ## Project Overview
 
-This is a fork of [Notepad++](https://notepad-plus-plus.org/), a Windows text editor written in C++20.
+This repository is a NodePlus-CODE fork of [Notepad++](https://notepad-plus-plus.org/), a Windows text editor written in C++20.
 The main executable is `nodeplus-code.exe`, built from `PowerEditor/`. It embeds
 [Scintilla](https://www.scintilla.org/) (`scintilla/`) and [Lexilla](https://www.scintilla.org/Lexilla.html)
 (`lexilla/`) as static libraries.
@@ -27,7 +27,7 @@ The main executable is `nodeplus-code.exe`, built from `PowerEditor/`. It embeds
 
 ### MinGW-w64 (MSYS2) — recommended local build
 ```bash
-# Full clean build (from repo root in Git Bash)
+# Repository build script (from repo root in Git Bash)
 ./build-local.sh
 
 # Incremental build only (faster)
@@ -40,7 +40,9 @@ mingw32-make -j$(nproc) DEBUG=1 PREBUILD_EVENT_CMD=:
 # Clang instead of GCC
 mingw32-make -j$(nproc) CXX=clang++ PREBUILD_EVENT_CMD=:
 ```
-Output lands in `PowerEditor/gcc/bin.gcc.x86_64/` (release) or `bin.gcc.x86_64-debug/` (debug).
+Output lands in `PowerEditor/gcc/bin.gcc.x86_64/` (release) or `PowerEditor/gcc/bin.gcc.x86_64-debug/` (debug).
+The script is the preferred build entry point; it also runs the repository's pre-build steps.
+If linking reports `Permission denied`, close the running `nodeplus-code.exe` first.
 
 ### Visual Studio 2022 (MSVC)
 ```bash
@@ -57,8 +59,9 @@ comments, docs, or a single non-critical file.
 
 ## Test Commands
 
-All tests run from Git Bash (or PowerShell where noted). A built `notepad++.exe`
-must exist at `PowerEditor/bin/` before running FunctionList or UrlDetection tests.
+Tests run from Git Bash unless a PowerShell command is shown. A built executable
+must be available at the location expected by the test launcher; this fork's
+normal output is `PowerEditor/gcc/bin.gcc.x86_64/nodeplus-code.exe`.
 
 ### XML Validator (Python)
 ```bash
@@ -90,6 +93,36 @@ with `-export=functionList` and diffs the output.
 cd PowerEditor/Test/UrlDetection
 .\verifyUrlDetection.ps1
 ```
+
+### Terminal Tests
+
+Terminal test artifacts and smoke-test helpers are under `PowerEditor/Test/Terminal/`.
+Use the repository build first, then run the specific helper documented in that
+directory. Do not treat generated `test_report.txt` or `test_results.json` as
+source files unless the task explicitly asks to update test expectations.
+
+### Lint and Static Checks
+
+There is no separate project-wide lint command. The MinGW build is the primary
+compile check and enables `-Wall -Wextra -Wconversion -Wpedantic`. Treat new
+warnings as regressions. For XML-only changes, run the XML validator. For a
+focused source check, build after editing only the affected target; the makefile
+will compile the changed translation units.
+
+### Running One Test
+
+For FunctionList, run one language test rather than the full suite:
+
+```powershell
+cd PowerEditor/Test/FunctionList
+.\unitTest.ps1 <relative-dir> <language-name>
+# Example:
+.\unitTest.ps1 python python
+```
+
+For URL detection, the checked-in launcher is suite-oriented; narrow it only if
+the script exposes a target parameter in the local version. Always inspect the
+script before inventing command-line arguments.
 
 ---
 
@@ -145,6 +178,34 @@ Upstream coding style is defined in `CONTRIBUTING.md`. Key rules follow.
 - Use `#pragma once` instead of include guards.
 - System/Win32 headers before local project headers.
 - Do not add new third-party dependencies without strong justification.
+- Include the narrowest header that provides a declaration; avoid transitive include reliance.
+- Keep include ordering stable and do not reorder unrelated includes.
+
+### Formatting and Patches
+
+- Preserve existing CRLF/LF conventions in files being edited.
+- Use ASCII by default; retain existing Unicode only when required by UI text or data.
+- Do not run broad formatters over the repository.
+- Keep patches focused and avoid drive-by renames or whitespace churn.
+- Use `apply_patch` for small hand-written edits; use project generators only for generated assets.
+
+### Ownership and Error Handling
+
+- Prefer RAII and clear ownership. Match every Win32 handle/resource acquisition with its existing cleanup convention.
+- Check Win32, HRESULT, and process-creation failures before using returned handles or buffers.
+- Return early on invalid inputs where that matches surrounding code; do not hide failures with empty catches.
+- Preserve UI-thread affinity for window operations and process UI notifications.
+- For asynchronous or callback code, ensure object lifetime and shutdown ordering are explicit.
+- Avoid logging credentials, user paths containing personal information, tokens, or environment secrets.
+
+### Windows and UI Changes
+
+- Maintain compatibility with both MSVC v143 and MinGW-w64 GCC.
+- Use wide Win32 APIs consistently with surrounding code (`CreateWindowW`, `ShellExecuteW`, etc.).
+- Audit resource IDs before adding one; never renumber existing IDs.
+- Update `.rc`, resource headers, localization strings, and dark-mode assets together when adding UI resources.
+- Test both normal and dark UI paths when changing icons, menus, dialogs, or tab controls.
+- Keep ordinary document-buffer behavior separate from special views such as terminal tabs.
 
 ### Resource IDs (`resource.h`)
 - Never delete or renumber existing resource IDs — all existing references must stay valid.
